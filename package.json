@@ -1,0 +1,31 @@
+{
+  "name": "loyalty-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-tenant loyalty cards in Apple Wallet",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types --watch src/server.ts",
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types src/server.ts",
+    "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test 'test/**/*.test.ts'",
+    "typecheck": "tsc --noEmit",
+    "dev-certs": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/dev-certs.ts",
+    "merchant": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types scripts/merchant.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.4",
+    "fflate": "^0.8.3",
+    "hono": "^4.13.13",
+    "jsqr": "^1.4.0",
+    "node-forge": "^1.4.0",
+    "qrcode-generator": "^2.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/node-forge": "^1.3.14",
+    "typescript": "^7.0.2"
+  }
+}
