@@ -4,8 +4,8 @@ import { Hono } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { raw } from 'hono/html'
 import type { Deps } from '../app.ts'
-import { notifyCard } from '../apns.ts'
 import { earn, history, LoyaltyError, merchantById, merchantCard, redeem, rewardsAvailable, type Card, type Merchant } from '../loyalty.ts'
+import { cardChanged } from '../notify.ts'
 import { parseBarcode, sha256 } from '../tokens.ts'
 import { page } from './layout.ts'
 
@@ -36,7 +36,8 @@ function resolveSerial(secret: string, input: unknown): string {
   throw new LoyaltyError('That is not one of our cards', 404)
 }
 
-export function staffRoutes({ db, config, push }: Deps) {
+export function staffRoutes(deps: Deps) {
+  const { db, config } = deps
   const app = new Hono<Env>()
 
   const staffAuth = createMiddleware<Env>(async (c, next) => {
@@ -52,9 +53,9 @@ export function staffRoutes({ db, config, push }: Deps) {
     await next()
   })
 
-  /** Pushes the new balance to the customer's Wallet without holding up the counter. */
-  function pushUpdate(serial: string) {
-    notifyCard(db, push, serial).catch((e) => console.error('push failed', e))
+  /** Pushes the new balance to the customer's wallets without holding up the counter. */
+  function pushUpdate(serial: string, rewardReady = false) {
+    cardChanged(db, deps, serial, { rewardReady }).catch((e) => console.error('push failed', e))
   }
 
   app.get('/staff', (c) =>
@@ -111,7 +112,9 @@ export function staffRoutes({ db, config, push }: Deps) {
     const r = earn(db, m, String(body.serial ?? ''), {
       amountFils: body.amountFils ?? null, staffId: c.get('staffId'), idempotencyKey: body.requestId,
     })
-    if (!r.replayed) pushUpdate(r.card.serial)
+    // A reward has just become ready when this purchase crossed a threshold.
+    const t = m.reward_threshold
+    if (!r.replayed) pushUpdate(r.card.serial, Math.floor(r.card.balance / t) > Math.floor((r.card.balance - r.units) / t))
     return c.json({ card: summary(m, r.card), units: r.units, replayed: r.replayed })
   })
 

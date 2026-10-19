@@ -128,3 +128,44 @@ test('malformed JSON is a 400, not a 500', async () => {
   })
   assert.equal(res.status, 400)
 })
+
+test('join flow: optional birthday and the phone language are kept; a bad birthday re-shows the form', async () => {
+  const { app, db, config } = setup()
+  const join = (fields: Record<string, string>, lang = 'ar-JO,ar;q=0.9,en;q=0.8') =>
+    app.request('/m/cafe/join', { method: 'POST', body: new URLSearchParams(fields), headers: { 'Accept-Language': lang } })
+  const card = (res: Response) => {
+    const serial = /\/c\/([0-9A-Z]{16})\?t=/.exec(res.headers.get('Location')!)![1]
+    return db.prepare('SELECT * FROM cards WHERE serial = ?').get(serial) as any
+  }
+
+  const lina = card(await join({ name: 'Lina', bday_day: '7', bday_month: '3' }))
+  assert.equal(lina.birthday, '03-07')
+  assert.equal(lina.lang, 'ar')
+  assert.equal(card(await join({ name: 'Omar' }, 'en-US,en;q=0.9')).lang, 'en')
+  assert.equal(card(await join({ name: 'Sara', bday_day: '', bday_month: '' })).birthday, null)
+
+  const bad = await join({ name: 'Lina', bday_day: '31', bday_month: '2' })
+  assert.equal(bad.status, 400)
+  const text = await bad.text()
+  assert.match(text, /Please check the birthday/)
+  assert.match(text, /value="2" selected/, 'keeps what they picked')
+
+  // Downloading the pass from a phone in English switches the card to English.
+  const t = linkToken(config.secret, lina.serial)
+  await app.request(`/c/${lina.serial}/card.pkpass?t=${t}`, { headers: { 'Accept-Language': 'en-GB' } })
+  assert.equal((db.prepare('SELECT lang FROM cards WHERE id = ?').get(lina.id) as any).lang, 'en')
+})
+
+test('logo for Google Wallet: the uploaded square logo, else a plain square in the card colour', async () => {
+  const { app, db, cafe } = setup()
+  const plain = await app.request('/m/cafe/logo.png')
+  assert.equal(plain.status, 200)
+  assert.equal(plain.headers.get('Content-Type'), 'image/png')
+  const square = Buffer.from(await plain.arrayBuffer())
+  assert.equal(square.readUInt32BE(16), 660, '660 px wide, the size Google asks for')
+
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+  db.prepare('INSERT INTO merchant_images (merchant_id, name, png) VALUES (?, ?, ?)').run(cafe.id, 'square.png', png)
+  assert.deepEqual(Buffer.from(await (await app.request('/m/cafe/logo.png')).arrayBuffer()), png)
+  assert.equal((await app.request('/m/nope/logo.png')).status, 404)
+})

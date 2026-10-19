@@ -64,15 +64,21 @@ export function apnsPusher(config: Config): Pusher {
     })
 }
 
-/** Pushes an update to every device holding the card, and forgets devices Apple says are gone. */
-export async function notifyCard(db: DB, push: Pusher, serial: string): Promise<PushResult[]> {
-  const rows = db.prepare('SELECT DISTINCT push_token FROM pass_registrations WHERE serial = ?').all(serial) as { push_token: string }[]
+/**
+ * Pushes an update to every device holding any of these cards, over one connection, and forgets
+ * devices Apple says are gone.
+ */
+export async function notifyCards(db: DB, push: Pusher, serials: string[]): Promise<PushResult[]> {
+  if (serials.length === 0) return []
+  const rows = db
+    .prepare('SELECT DISTINCT push_token FROM pass_registrations WHERE serial IN (SELECT value FROM json_each(?))')
+    .all(JSON.stringify(serials)) as { push_token: string }[]
   const results = await push(rows.map((r) => r.push_token))
   for (const r of results) {
     if (r.status === 410 || r.reason === 'BadDeviceToken' || r.reason === 'Unregistered') {
       db.prepare('DELETE FROM pass_registrations WHERE push_token = ?').run(r.token)
     } else if (r.status !== 200) {
-      console.warn(`APNs push for ${serial} failed: ${r.status} ${r.reason ?? ''}`)
+      console.warn(`APNs push to ${r.token.slice(0, 8)}… failed: ${r.status} ${r.reason ?? ''}`)
     }
   }
   return results

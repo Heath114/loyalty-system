@@ -11,7 +11,8 @@ main{max-width:440px;margin:0 auto;padding:24px 16px 48px}
 h1{font-size:24px;margin:8px 0 4px}p{margin:8px 0}.muted{color:var(--muted)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin:16px 0}
 label{display:block;font-size:14px;margin:14px 0 6px}
-input{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg)}
+input,select{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg)}
+.row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
 .check{display:flex;gap:10px;align-items:flex-start;margin-top:16px}.check input{width:auto;margin-top:4px}
 button,.btn{display:block;width:100%;text-align:center;font:600 16px/1 inherit;padding:15px;border:0;border-radius:12px;background:var(--accent);color:var(--bg);text-decoration:none;margin-top:16px;cursor:pointer}
 .btn.secondary{background:transparent;color:var(--fg);border:1px solid var(--line)}

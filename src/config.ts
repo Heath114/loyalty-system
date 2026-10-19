@@ -12,6 +12,16 @@ export interface Config {
   apns: { host: string }
   /** Set once Apple grants the NFC pass entitlement. Base64 of the merchant's compressed P-256 public key. */
   nfcEncryptionPublicKey: string | null
+  /** Google Wallet, once we have an issuer account (docs/GOOGLE_SETUP.md). Null: Apple only. */
+  google: GoogleConfig | null
+}
+
+export interface GoogleConfig {
+  /** From the Google Pay & Wallet Console. */
+  issuerId: string
+  /** The service account that calls the Wallet API and signs "Save to Google Wallet" links. */
+  clientEmail: string
+  privateKey: string
 }
 
 export interface PassConfig {
@@ -56,5 +66,18 @@ export function loadConfig(): Config {
     },
     apns: { host: process.env.APNS_HOST ?? 'https://api.push.apple.com' },
     nfcEncryptionPublicKey: process.env.NFC_ENCRYPTION_PUBLIC_KEY || null,
+    google: googleConfig(),
   }
+}
+
+/** The service account key file Google hands out, inline (GOOGLE_SERVICE_ACCOUNT_JSON) or as a path. */
+function googleConfig(): GoogleConfig | null {
+  const issuerId = process.env.GOOGLE_ISSUER_ID
+  if (!issuerId) return null
+  const inline = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+  const path = inline ? '' : need('GOOGLE_SERVICE_ACCOUNT_PATH')
+  if (path && !existsSync(path)) throw new Error(`GOOGLE_SERVICE_ACCOUNT_PATH points at ${path}, which does not exist`)
+  const key = JSON.parse(inline || readFileSync(path, 'utf8')) as { client_email?: string; private_key?: string }
+  if (!key.client_email || !key.private_key) throw new Error('The Google service account key has no client_email or private_key')
+  return { issuerId, clientEmail: key.client_email, privateKey: key.private_key }
 }

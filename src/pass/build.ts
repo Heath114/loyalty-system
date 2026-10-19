@@ -1,7 +1,8 @@
 import type { Config } from '../config.ts'
 import type { DB } from '../db.ts'
-import { rewardsAvailable, type Card, type Merchant } from '../loyalty.ts'
+import { locations as merchantLocations, rewardsAvailable, type Card, type Location, type Merchant } from '../loyalty.ts'
 import { barcodeMessage } from '../tokens.ts'
+import { howItWorks, nearby, nextReward, rewardText, welcome } from './copy.ts'
 import { packPass, type PassFiles } from './pkpass.ts'
 import { isPng, solidPng } from './png.ts'
 
@@ -16,41 +17,36 @@ export function formatSerial(serial: string): string {
  * file of that card's pass.
  */
 function strings(merchant: Merchant, card: Card): { en: Record<string, string>; ar: Record<string, string> } {
-  const left = merchant.reward_threshold - (card.balance % merchant.reward_threshold)
-  const ready = rewardsAvailable(merchant, card)
-  const unitEn = merchant.program === 'stamps' ? (left === 1 ? 'stamp' : 'stamps') : 'points'
-  const unitAr = merchant.program === 'stamps' ? 'طوابع' : 'نقاط'
+  const stamps = merchant.program === 'stamps'
   return {
     en: {
-      BALANCE: merchant.program === 'stamps' ? 'STAMPS' : 'POINTS',
-      CHANGE_BALANCE: merchant.program === 'stamps' ? 'Your card: %@' : 'Your balance: %@ points',
+      BALANCE: stamps ? 'STAMPS' : 'POINTS',
+      CHANGE_BALANCE: stamps ? 'Your card: %@' : 'Your balance: %@ points',
+      CHANGE_BALANCE_READY: stamps ? 'Your card: %@. Your reward is ready!' : 'Your balance: %@ points. Your reward is ready!',
       MEMBER: 'MEMBER',
       REWARDS: 'REWARDS',
       NEXT: 'NEXT REWARD',
-      NEXT_VALUE: ready > 0 ? 'Ready to redeem' : `${left} ${unitEn} to go`,
+      NEXT_VALUE: nextReward(merchant, card, 'en'),
+      NEWS: 'NEWS',
       REWARD: 'REWARD',
-      REWARD_TEXT: merchant.reward_text,
+      REWARD_TEXT: rewardText(merchant, 'en'),
       HOW: 'HOW IT WORKS',
-      HOW_TEXT:
-        merchant.program === 'stamps'
-          ? `Show this card at the counter on every visit for a stamp. Collect ${merchant.reward_threshold} stamps and get: ${merchant.reward_text}.`
-          : `Show this card at the counter when you pay. Every JOD earns ${merchant.points_per_jod} points. At ${merchant.reward_threshold} points you get: ${merchant.reward_text}.`,
+      HOW_TEXT: howItWorks(merchant, 'en'),
       CARD_NO: 'CARD NUMBER',
     },
     ar: {
-      BALANCE: merchant.program === 'stamps' ? 'الطوابع' : 'النقاط',
-      CHANGE_BALANCE: merchant.program === 'stamps' ? 'بطاقتك: %@' : 'رصيدك: %@ نقطة',
+      BALANCE: stamps ? 'الطوابع' : 'النقاط',
+      CHANGE_BALANCE: stamps ? 'بطاقتك: %@' : 'رصيدك: %@ نقطة',
+      CHANGE_BALANCE_READY: stamps ? 'بطاقتك: %@. مكافأتك جاهزة!' : 'رصيدك: %@ نقطة. مكافأتك جاهزة!',
       MEMBER: 'العضو',
       REWARDS: 'المكافآت',
       NEXT: 'المكافأة التالية',
-      NEXT_VALUE: ready > 0 ? 'جاهزة للاستلام' : `بقي ${left} ${unitAr}`,
+      NEXT_VALUE: nextReward(merchant, card, 'ar'),
+      NEWS: 'آخر الأخبار',
       REWARD: 'المكافأة',
-      REWARD_TEXT: merchant.reward_text_ar ?? merchant.reward_text,
+      REWARD_TEXT: rewardText(merchant, 'ar'),
       HOW: 'طريقة الاستخدام',
-      HOW_TEXT:
-        merchant.program === 'stamps'
-          ? `أبرز هذه البطاقة عند الكاونتر في كل زيارة لتحصل على طابع. اجمع ${merchant.reward_threshold} طوابع واحصل على: ${merchant.reward_text_ar ?? merchant.reward_text}.`
-          : `أبرز هذه البطاقة عند الدفع. كل دينار يمنحك ${merchant.points_per_jod} نقطة، وعند ${merchant.reward_threshold} نقطة تحصل على: ${merchant.reward_text_ar ?? merchant.reward_text}.`,
+      HOW_TEXT: howItWorks(merchant, 'ar'),
       CARD_NO: 'رقم البطاقة',
     },
   }
@@ -63,11 +59,18 @@ function stringsFile(entries: Record<string, string>): Uint8Array {
   return Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')])
 }
 
-export function passJson(config: Config, merchant: Merchant, card: Card): Record<string, unknown> {
+export interface PassExtras {
+  /** The newest message sent to this card, already in the card's language. */
+  message?: string | null
+  locations?: Location[]
+}
+
+export function passJson(config: Config, merchant: Merchant, card: Card, extras: PassExtras = {}): Record<string, unknown> {
   const message = barcodeMessage(config.secret, card.serial)
   // A full stamp card stays full until it is redeemed, so the notification for the last stamp reads "10 / 10".
   const t = merchant.reward_threshold
   const balanceValue = merchant.program === 'stamps' ? `${Math.min(card.balance, t)} / ${t}` : card.balance
+  const ready = rewardsAvailable(merchant, card)
   const json: Record<string, unknown> = {
     formatVersion: 1,
     passTypeIdentifier: config.pass.passTypeIdentifier,
@@ -82,18 +85,35 @@ export function passJson(config: Config, merchant: Merchant, card: Card): Record
     sharingProhibited: true,
     barcodes: [{ format: 'PKBarcodeFormatQR', message, messageEncoding: 'iso-8859-1', altText: formatSerial(card.serial) }],
     storeCard: {
-      headerFields: [{ key: 'rewards', label: 'REWARDS', value: rewardsAvailable(merchant, card) }],
-      primaryFields: [{ key: 'balance', label: 'BALANCE', value: balanceValue, changeMessage: 'CHANGE_BALANCE' }],
+      headerFields: [{ key: 'rewards', label: 'REWARDS', value: ready }],
+      primaryFields: [
+        { key: 'balance', label: 'BALANCE', value: balanceValue, changeMessage: ready > 0 ? 'CHANGE_BALANCE_READY' : 'CHANGE_BALANCE' },
+      ],
       secondaryFields: [
         { key: 'member', label: 'MEMBER', value: card.member_name },
         { key: 'next', label: 'NEXT', value: 'NEXT_VALUE' },
       ],
       backFields: [
+        // Merchant messages (birthday, offers, "we miss you") land here. Wallet shows a lock-screen
+        // notification whenever a field with a changeMessage gets a new value, and "%@" is that value,
+        // so the notification reads exactly the message. The text is written in the card's language
+        // rather than through pass.strings, so what the lock screen shows never depends on a lookup.
+        // The field is there from the first version of the pass, so the first message is a change too.
+        { key: 'news', label: 'NEWS', value: extras.message ?? welcome(merchant, card.lang), changeMessage: '%@' },
         { key: 'reward', label: 'REWARD', value: 'REWARD_TEXT' },
         { key: 'how', label: 'HOW', value: 'HOW_TEXT' },
         { key: 'serial', label: 'CARD_NO', value: formatSerial(card.serial) },
       ],
     },
+  }
+  // Near a branch, Wallet offers the card on the lock screen with this text. Best effort by Apple's
+  // design: the system decides when, and promises no banner (docs/STUDY.md section 4).
+  if (extras.locations?.length) {
+    json.locations = extras.locations.slice(0, 10).map((l) => ({
+      latitude: l.latitude,
+      longitude: l.longitude,
+      relevantText: nearby(merchant, l, card.lang),
+    }))
   }
   // Wallet only registers for updates over HTTPS. Without it the card still works, it just never refreshes.
   if (config.publicUrl.startsWith('https://')) {
@@ -110,22 +130,40 @@ export function passJson(config: Config, merchant: Merchant, card: Card): Record
 
 const IMAGE_SIZES: Record<string, number> = { 'icon.png': 29, 'icon@2x.png': 58, 'icon@3x.png': 87 }
 
+export function merchantImage(db: DB, merchantId: number, name: string): Uint8Array | undefined {
+  const row = db.prepare('SELECT png FROM merchant_images WHERE merchant_id = ? AND name = ?').get(merchantId, name) as
+    | { png: Uint8Array }
+    | undefined
+  return row && isPng(row.png) ? row.png : undefined
+}
+
 function images(db: DB, merchant: Merchant): PassFiles {
   const rows = db.prepare('SELECT name, png FROM merchant_images WHERE merchant_id = ?').all(merchant.id) as {
     name: string
     png: Uint8Array
   }[]
   const out: PassFiles = {}
-  for (const r of rows) if (isPng(r.png)) out[r.name] = r.png
+  // square.png is the Google Wallet logo; Apple has no use for it.
+  for (const r of rows) if (isPng(r.png) && r.name !== 'square.png') out[r.name] = r.png
   // icon.png is required: without it the pass will not install.
   for (const [name, size] of Object.entries(IMAGE_SIZES)) out[name] ??= solidPng(size, merchant.bg_color)
   return out
 }
 
+/** Text of the card's newest message, if it has one. */
+export function latestMessage(db: DB, card: Card): string | null {
+  if (card.last_message_id == null) return null
+  const row = db.prepare('SELECT text FROM messages WHERE id = ? AND card_id = ?').get(card.last_message_id, card.id) as
+    | { text: string }
+    | undefined
+  return row?.text ?? null
+}
+
 export function buildPass(db: DB, config: Config, merchant: Merchant, card: Card): Uint8Array {
   const s = strings(merchant, card)
+  const extras = { message: latestMessage(db, card), locations: merchantLocations(db, merchant.id) }
   return packPass(config.pass, {
-    'pass.json': Buffer.from(JSON.stringify(passJson(config, merchant, card))),
+    'pass.json': Buffer.from(JSON.stringify(passJson(config, merchant, card, extras))),
     'en.lproj/pass.strings': stringsFile(s.en),
     'ar.lproj/pass.strings': stringsFile(s.ar),
     ...images(db, merchant),

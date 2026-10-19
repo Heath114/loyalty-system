@@ -14,7 +14,13 @@ export interface Merchant {
   bg_color: string
   fg_color: string
   label_color: string
+  timezone: string
+  changed_at: number
+  synced_at: number
+  google_synced_at: number
 }
+
+export type Lang = 'ar' | 'en'
 
 export interface Card {
   id: number
@@ -30,6 +36,10 @@ export interface Card {
   rewards_redeemed: number
   created_at: number
   updated_at: number
+  lang: Lang
+  birthday: string | null
+  last_message_id: number | null
+  google_object_at: number | null
 }
 
 export class LoyaltyError extends Error {
@@ -40,7 +50,10 @@ export class LoyaltyError extends Error {
   }
 }
 
-export type NewMerchant = Omit<Merchant, 'id' | 'name_ar' | 'reward_text_ar' | 'bg_color' | 'fg_color' | 'label_color' | 'points_per_jod'> &
+export type NewMerchant = Omit<
+  Merchant,
+  'id' | 'name_ar' | 'reward_text_ar' | 'bg_color' | 'fg_color' | 'label_color' | 'points_per_jod' | 'timezone' | 'changed_at' | 'synced_at' | 'google_synced_at'
+> &
   Partial<Pick<Merchant, 'name_ar' | 'reward_text_ar' | 'bg_color' | 'fg_color' | 'label_color' | 'points_per_jod'>>
 
 export function createMerchant(db: DB, m: NewMerchant): Merchant {
@@ -65,6 +78,11 @@ export function merchantById(db: DB, id: number): Merchant {
   return db.prepare('SELECT * FROM merchants WHERE id = ?').get(id) as unknown as Merchant
 }
 
+/** Marks something printed on every one of the merchant's cards as changed; the scheduler then refreshes them. */
+export function touchMerchant(db: DB, merchantId: number): void {
+  db.prepare('UPDATE merchants SET changed_at = ? WHERE id = ?').run(Date.now(), merchantId)
+}
+
 export function cardBySerial(db: DB, serial: string): Card | undefined {
   return db.prepare('SELECT * FROM cards WHERE serial = ?').get(serial) as Card | undefined
 }
@@ -80,7 +98,28 @@ export interface Enrolment {
   name: string
   phone?: string
   email?: string
+  /** "MM-DD". */
+  birthday?: string
   marketingConsent: boolean
+  lang?: Lang
+}
+
+const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+/** Day and month from the join form as "MM-DD", or null when both are left empty. */
+export function parseBirthday(day: string, month: string): string | null {
+  if (!day && !month) return null
+  const d = Number(day)
+  const m = Number(month)
+  if (!Number.isInteger(d) || !Number.isInteger(m) || m < 1 || m > 12 || d < 1 || d > DAYS_IN_MONTH[m - 1]) {
+    throw new LoyaltyError('Please check the birthday')
+  }
+  return `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
+/** The phone's language from its Accept-Language header: Arabic if that comes first, otherwise English. */
+export function langFrom(acceptLanguage: string | undefined): Lang {
+  return /^\s*ar\b/i.test(acceptLanguage ?? '') ? 'ar' : 'en'
 }
 
 export function enrol(db: DB, merchant: Merchant, e: Enrolment): Card {
@@ -90,12 +129,14 @@ export function enrol(db: DB, merchant: Merchant, e: Enrolment): Card {
   if (phone && !/^\+?[0-9 ]{7,20}$/.test(phone)) throw new LoyaltyError('Please check the phone number')
   const email = e.email?.trim() || null
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new LoyaltyError('Please check the email address')
+  if (e.birthday && !/^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.test(e.birthday)) throw new LoyaltyError('Please check the birthday')
   const now = Date.now()
   const serial = newSerial()
   db.prepare(
-    `INSERT INTO cards (merchant_id, serial, auth_token, member_name, member_phone, member_email, marketing_consent, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(merchant.id, serial, newAuthToken(), name, phone, email, e.marketingConsent ? 1 : 0, now, now)
+    `INSERT INTO cards (merchant_id, serial, auth_token, member_name, member_phone, member_email, birthday, marketing_consent, lang,
+       created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(merchant.id, serial, newAuthToken(), name, phone, email, e.birthday || null, e.marketingConsent ? 1 : 0, e.lang ?? 'ar', now, now)
   return cardBySerial(db, serial)!
 }
 
@@ -186,4 +227,41 @@ export function history(db: DB, card: Card, limit = 20) {
   return db
     .prepare('SELECT kind, units, amount_fils, created_at FROM ledger WHERE card_id = ? ORDER BY id DESC LIMIT ?')
     .all(card.id, limit) as { kind: string; units: number; amount_fils: number | null; created_at: number }[]
+}
+
+export interface Location {
+  id: number
+  merchant_id: number
+  label: string
+  latitude: number
+  longitude: number
+  /** What the lock screen says near this branch. Empty: a default naming the merchant. */
+  text: string | null
+  text_ar: string | null
+}
+
+/** Apple and Google both take at most 10 locations per card. */
+export const MAX_LOCATIONS = 10
+
+export function locations(db: DB, merchantId: number): Location[] {
+  return db.prepare('SELECT * FROM locations WHERE merchant_id = ? ORDER BY id').all(merchantId) as unknown as Location[]
+}
+
+export function addLocation(db: DB, merchant: Merchant, l: Omit<Location, 'id' | 'merchant_id' | 'text' | 'text_ar'> & Partial<Pick<Location, 'text' | 'text_ar'>>): Location {
+  if (!l.label.trim()) throw new LoyaltyError('Give the branch a name')
+  if (!(Math.abs(l.latitude) <= 90) || !(Math.abs(l.longitude) <= 180)) throw new LoyaltyError('Latitude or longitude out of range')
+  return tx(db, () => {
+    if (locations(db, merchant.id).length >= MAX_LOCATIONS) throw new LoyaltyError(`At most ${MAX_LOCATIONS} branches`, 409)
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO locations (merchant_id, label, latitude, longitude, text, text_ar) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(merchant.id, l.label.trim(), l.latitude, l.longitude, l.text?.trim() || null, l.text_ar?.trim() || null)
+    touchMerchant(db, merchant.id)
+    return db.prepare('SELECT * FROM locations WHERE id = ?').get(lastInsertRowid) as unknown as Location
+  })
+}
+
+export function removeLocation(db: DB, merchant: Merchant, id: number): void {
+  const { changes } = db.prepare('DELETE FROM locations WHERE id = ? AND merchant_id = ?').run(id, merchant.id)
+  if (!changes) throw new LoyaltyError('Branch not found', 404)
+  touchMerchant(db, merchant.id)
 }

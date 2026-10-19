@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types --watch src/server.ts",
     "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types src/server.ts",
-    "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test 'test/**/*.test.ts'",
+    "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "dev-certs": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/dev-certs.ts",
     "merchant": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types scripts/merchant.ts"

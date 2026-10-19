@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Config } from './config.ts'
 import type { DB } from './db.ts'
 import type { Pusher } from './apns.ts'
+import type { GoogleWallet } from './google.ts'
 import { LoyaltyError } from './loyalty.ts'
 import { publicRoutes } from './routes/public.ts'
 import { staffRoutes } from './routes/staff.ts'
@@ -11,6 +12,8 @@ export interface Deps {
   db: DB
   config: Config
   push: Pusher
+  /** Null until Google Wallet is set up (docs/GOOGLE_SETUP.md): the card is then Apple only. */
+  google: GoogleWallet | null
 }
 
 export function createApp(deps: Deps) {
