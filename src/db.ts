@@ -220,6 +220,16 @@ const MIGRATIONS = [
   CREATE INDEX messages_card ON messages(card_id, created_at);
   CREATE INDEX messages_merchant ON messages(merchant_id, created_at);
   `,
+  // 4: reporting, and deleting a member on request.
+  `
+  -- Set when a member asked to be deleted (Jordan PDPL): their details are wiped, the card is voided
+  -- in their wallet and can no longer be scanned. The row stays so visit counts stay true.
+  ALTER TABLE cards ADD COLUMN deleted_at INTEGER;
+  -- So an owner can see which counter devices are in use, and spot a key nobody uses.
+  ALTER TABLE staff ADD COLUMN last_used_at INTEGER;
+  CREATE INDEX ledger_merchant_time ON ledger(merchant_id, created_at);
+  CREATE INDEX cards_merchant_created ON cards(merchant_id, created_at);
+  `,
 ]
 
 /** opts.version stops the migrations at that version: only tests use it, to check an upgrade keeps data. */

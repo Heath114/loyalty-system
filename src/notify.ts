@@ -48,6 +48,23 @@ export async function cardChanged(db: DB, ch: Channels, serial: string, opts: { 
   await Promise.all([notifyCards(db, ch.push, [serial]), google()])
 }
 
+/**
+ * A member was deleted (loyalty.ts deleteMember): Apple devices fetch the card once more, now void;
+ * Google marks it inactive. After that nothing is ever sent to it again.
+ */
+export async function cardDeleted(db: DB, ch: Channels, card: Card): Promise<void> {
+  const google = async () => {
+    if (!ch.google || card.google_object_at == null) return
+    try {
+      await ch.google.deactivateCard(card)
+    } catch (e) {
+      warnGoogle(card, e)
+    }
+    forgetGoogle(db, card)
+  }
+  await Promise.all([notifyCards(db, ch.push, [card.serial]), google()])
+}
+
 /** Puts freshly recorded messages on lock screens: one push batch for Apple, a call per card for Google. */
 export async function deliverMessages(db: DB, ch: Channels, sent: { outgoing: Outgoing; message: Message }[]): Promise<void> {
   if (sent.length === 0) return

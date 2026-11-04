@@ -106,6 +106,11 @@ export function passJson(config: Config, merchant: Merchant, card: Card, extras:
       ],
     },
   }
+  // The member asked to be deleted: their wallet shows the card as void, and it never surfaces again.
+  if (card.deleted_at != null) {
+    json.voided = true
+    return json
+  }
   // Near a branch, Wallet offers the card on the lock screen with this text. Best effort by Apple's
   // design: the system decides when, and promises no banner (docs/STUDY.md section 4).
   if (extras.locations?.length) {
@@ -156,7 +161,7 @@ export function latestMessage(db: DB, card: Card): string | null {
   const row = db.prepare('SELECT text FROM messages WHERE id = ? AND card_id = ?').get(card.last_message_id, card.id) as
     | { text: string }
     | undefined
-  return row?.text ?? null
+  return row?.text || null
 }
 
 export function buildPass(db: DB, config: Config, merchant: Merchant, card: Card): Uint8Array {

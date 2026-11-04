@@ -40,6 +40,7 @@ export interface Card {
   birthday: string | null
   last_message_id: number | null
   google_object_at: number | null
+  deleted_at: number | null
 }
 
 export class LoyaltyError extends Error {
@@ -83,13 +84,14 @@ export function touchMerchant(db: DB, merchantId: number): void {
   db.prepare('UPDATE merchants SET changed_at = ? WHERE id = ?').run(Date.now(), merchantId)
 }
 
-export function cardBySerial(db: DB, serial: string): Card | undefined {
-  return db.prepare('SELECT * FROM cards WHERE serial = ?').get(serial) as Card | undefined
+/** A live card. A deleted member's card reads as not found, unless asked for (Apple's web service, to void it). */
+export function cardBySerial(db: DB, serial: string, opts: { deleted?: boolean } = {}): Card | undefined {
+  return db.prepare(`SELECT * FROM cards WHERE serial = ? ${opts.deleted ? '' : 'AND deleted_at IS NULL'}`).get(serial) as Card | undefined
 }
 
-/** A card scoped to the merchant asking: another merchant's card reads as not found. */
+/** A card scoped to the merchant asking: another merchant's card, or a deleted one, reads as not found. */
 export function merchantCard(db: DB, merchantId: number, serial: string): Card {
-  const card = db.prepare('SELECT * FROM cards WHERE serial = ? AND merchant_id = ?').get(serial, merchantId) as Card | undefined
+  const card = db.prepare('SELECT * FROM cards WHERE serial = ? AND merchant_id = ? AND deleted_at IS NULL').get(serial, merchantId) as Card | undefined
   if (!card) throw new LoyaltyError('Card not found', 404)
   return card
 }
@@ -328,6 +330,27 @@ export function redeem(
       units, now, card.id,
     )
     return { card: merchantCard(db, merchant.id, serial), units, replayed: false }
+  })
+}
+
+export const DELETED_NAME = 'Deleted member'
+
+/**
+ * A member asked to be deleted (Jordan PDPL). Their name, phone, email and birthday are wiped and
+ * every message stops; the card can no longer be scanned or opened. The visits stay, without a name,
+ * so the merchant's numbers stay true. Returns the serial, for voiding the card in their wallet.
+ */
+export function deleteMember(db: DB, merchant: Merchant, serial: string): Card {
+  return tx(db, () => {
+    const card = merchantCard(db, merchant.id, serial)
+    const now = Math.max(Date.now(), card.updated_at + 1)
+    db.prepare(
+      `UPDATE cards SET member_name = ?, member_phone = NULL, member_email = NULL, birthday = NULL, marketing_consent = 0,
+         deleted_at = ?, updated_at = ? WHERE id = ?`,
+    ).run(DELETED_NAME, now, now, card.id)
+    // The text of messages sent to them was personalised with their name.
+    db.prepare("UPDATE messages SET text = '' WHERE card_id = ?").run(card.id)
+    return db.prepare('SELECT * FROM cards WHERE id = ?').get(card.id) as unknown as Card
   })
 }
 

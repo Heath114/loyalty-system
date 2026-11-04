@@ -44,6 +44,8 @@ export interface GoogleWallet {
   sendMessage(m: Merchant, card: Card, message: GoogleMessage, keep: { id: number; text: string }[] | null): Promise<boolean>
   /** The "Save to Google Wallet" link for a card whose object exists. */
   saveUrl(m: Merchant, card: Card): string
+  /** Takes a deleted member's card out of use: Google shows it as no longer active. False if it is not there. */
+  deactivateCard(card: Card): Promise<boolean>
 }
 
 type Localized = { defaultValue: { language: string; value: string }; translatedValues?: { language: string; value: string }[] }
@@ -231,6 +233,13 @@ export function googleWallet(config: Config, f: typeof fetch = fetch): GoogleWal
         g.privateKey,
       )
       return `https://pay.google.com/gp/v/save/${jwt}`
+    },
+
+    async deactivateCard(card) {
+      const r = await call('PATCH', objectPath(card), { state: 'INACTIVE', accountName: 'Deleted member', messages: [] })
+      if (r.status === 404) return false
+      if (!ok(r.status)) throw fail('card deactivation', r)
+      return true
     },
   }
 }

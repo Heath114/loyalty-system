@@ -19,6 +19,7 @@ export function walletRoutes({ db, config }: Deps) {
   }
 
   app.post('/v1/devices/:device/registrations/:ptid/:serial', async (c) => {
+    // A deleted member's card takes no new devices; the ones it has fetch it once more, voided.
     const card = cardBySerial(db, c.req.param('serial'))
     if (c.req.param('ptid') !== ptid || !authorised(card, c.req.header('Authorization'))) return c.body(null, 401)
     const body = await c.req.json<{ pushToken?: string }>().catch(() => ({}) as { pushToken?: string })
@@ -33,7 +34,7 @@ export function walletRoutes({ db, config }: Deps) {
   })
 
   app.delete('/v1/devices/:device/registrations/:ptid/:serial', (c) => {
-    const card = cardBySerial(db, c.req.param('serial'))
+    const card = cardBySerial(db, c.req.param('serial'), { deleted: true })
     if (c.req.param('ptid') !== ptid || !authorised(card, c.req.header('Authorization'))) return c.body(null, 401)
     db.prepare('DELETE FROM pass_registrations WHERE device_library_id = ? AND serial = ?').run(c.req.param('device'), card.serial)
     return c.body(null, 200)
@@ -57,7 +58,7 @@ export function walletRoutes({ db, config }: Deps) {
   })
 
   app.get('/v1/passes/:ptid/:serial', (c) => {
-    const card = cardBySerial(db, c.req.param('serial'))
+    const card = cardBySerial(db, c.req.param('serial'), { deleted: true })
     if (c.req.param('ptid') !== ptid || !authorised(card, c.req.header('Authorization'))) return c.body(null, 401)
     const lastModified = new Date(Math.floor(card.updated_at / 1000) * 1000)
     const since = Date.parse(c.req.header('If-Modified-Since') ?? '')

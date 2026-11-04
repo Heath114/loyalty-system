@@ -50,6 +50,9 @@ export function staffRoutes(deps: Deps) {
           | undefined)
       : undefined
     if (!row) return c.json({ error: 'Staff key not recognised' }, 401)
+    // At most one write a minute per key: enough for "last used", cheap at a busy counter.
+    const now = Date.now()
+    db.prepare('UPDATE staff SET last_used_at = ? WHERE id = ? AND (last_used_at IS NULL OR last_used_at < ?)').run(now, row.id, now - 60_000)
     c.set('merchant', merchantById(db, row.merchant_id))
     c.set('staffId', row.id)
     await next()

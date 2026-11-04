@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { openDb } from '../src/db.ts'
-import { createCategory, createMerchant, enrol, LoyaltyError, type Card, type Merchant } from '../src/loyalty.ts'
+import { cardBySerial, createCategory, enrol, LoyaltyError, type Card, type Merchant } from '../src/loyalty.ts'
 import {
   createCampaign, createReminder, due, localToEpoch, record, reminders, removeReminder, setTrigger, updateReminder, zoned,
 } from '../src/messages.ts'
-import { setup, STAMPS } from './helpers.ts'
+import { setup } from './helpers.ts'
 
 const DAY = 86_400_000
 const TZ = 'Asia/Amman'
@@ -114,25 +114,29 @@ test('reminder: validation, and another merchant\'s category or reminder is not 
 
 test('upgrade: a database from before reminders keeps its messages and accepts the new kind', () => {
   const dir = mkdtempSync(join(tmpdir(), 'loyalty-'))
+  const path = join(dir, 'old.db')
+  let old: ReturnType<typeof openDb> | undefined
+  let db: ReturnType<typeof openDb> | undefined
   try {
-    const path = join(dir, 'old.db')
-    const old = openDb(path, { version: 1 })
-    const m = createMerchant(old, STAMPS)
-    const card = enrol(old, m, { name: 'Lina', marketingConsent: true })
-    old.prepare("INSERT INTO messages (merchant_id, card_id, kind, dedupe_key, text, local_day, created_at) VALUES (?, ?, 'promo', 'promo:1', 'Hello', '2026-10-20', 1)")
-      .run(m.id, card.id)
+    // Written with plain SQL, as the version-1 server wrote it: today's functions expect today's columns.
+    old = openDb(path, { version: 1 })
+    old.exec(`INSERT INTO merchants (id, slug, name, program, reward_threshold, reward_text, created_at) VALUES (1, 'cafe', 'Cafe', 'stamps', 3, 'Coffee', 1);
+      INSERT INTO cards (id, merchant_id, serial, auth_token, member_name, created_at, updated_at) VALUES (1, 1, 'ABCDEFGHJKMNPQRS', 'tok', 'Lina', 1, 1);
+      INSERT INTO messages (merchant_id, card_id, kind, dedupe_key, text, local_day, created_at) VALUES (1, 1, 'promo', 'promo:1', 'Hello', '2026-10-20', 1);`)
     old.close()
+    old = undefined
 
-    const db = openDb(path)
-    assert.equal((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, 3)
+    db = openDb(path)
+    assert.ok((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version >= 3)
     const kept = db.prepare('SELECT * FROM messages').all() as any[]
     assert.deepEqual(kept.map((x) => [x.kind, x.text, x.reminder_id]), [['promo', 'Hello', null]])
-    db.prepare("INSERT INTO messages (merchant_id, card_id, kind, dedupe_key, text, local_day, created_at) VALUES (?, ?, 'reminder', 'r', 'x', '2026-10-21', 2)")
-      .run(m.id, card.id)
-    assert.throws(() => db.prepare("INSERT INTO messages (merchant_id, card_id, kind, dedupe_key, text, local_day, created_at) VALUES (?, ?, 'spam', 's', 'x', 'd', 3)").run(m.id, card.id))
+    db.exec("INSERT INTO messages (merchant_id, card_id, kind, dedupe_key, text, local_day, created_at) VALUES (1, 1, 'reminder', 'r', 'x', '2026-10-21', 2)")
+    assert.throws(() => db!.exec("INSERT INTO messages (merchant_id, card_id, kind, dedupe_key, text, local_day, created_at) VALUES (1, 1, 'spam', 's', 'x', 'd', 3)"))
     assert.deepEqual((db.prepare('PRAGMA foreign_key_check').all() as unknown[]).length, 0)
-    db.close()
+    assert.equal(cardBySerial(db, 'ABCDEFGHJKMNPQRS')?.member_name, 'Lina', 'the card reads with the new columns')
   } finally {
+    old?.close()
+    db?.close()
     rmSync(dir, { recursive: true, force: true })
   }
 })
