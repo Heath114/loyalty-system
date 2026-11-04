@@ -5,8 +5,8 @@ import { createMiddleware } from 'hono/factory'
 import { raw } from 'hono/html'
 import type { Deps } from '../app.ts'
 import {
-  categories, crossedReward, earn, history, LoyaltyError, merchantById, merchantCard, redeem, rewardMenu, rewardsAvailable, undoLast,
-  type Card, type Merchant,
+  categories, crossedReward, earn, history, LoyaltyError, merchantById, merchantCard, redeem, rewardMenu, rewardsAvailable, runningBoosts,
+  undoLast, type Card, type Merchant,
 } from '../loyalty.ts'
 import { cardChanged } from '../notify.ts'
 import { parseBarcode, sha256 } from '../tokens.ts'
@@ -29,6 +29,8 @@ function summary(db: Deps['db'], m: Merchant, card: Card) {
     rewardTextAr: m.reward_text_ar,
     /** Every reward, the headline first; staff pick from the affordable ones. */
     menu: rewardMenu(db, m, card),
+    /** Bonus periods on now: the staff page shows them, so nobody is surprised by double points. */
+    boosts: runningBoosts(db, m.id),
   }
 }
 

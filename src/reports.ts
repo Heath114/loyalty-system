@@ -86,6 +86,8 @@ export interface Report {
   unattributed_visits: number
   messages: MessageResult[]
   referrals: ReferralStats
+  /** Bonus periods that overlap the period, with the purchases they boosted. */
+  boosts: { id: number; label: string; multiplier: number; starts_at: number; ends_at: number; cancelled: boolean; purchases: number; units: number }[]
   /** New members who started with the welcome gift, and what it added up to. */
   welcome: { members: number; units: number }
 }
@@ -188,6 +190,15 @@ export function report(db: DB, m: Merchant, p: Period): Report {
     unattributed_visits: n(unattributed.n),
     messages: messageResults(db, m, p),
     referrals: referralStats(db, m, p.from, p.to),
+    boosts: all(
+      `SELECT b.id, b.label, b.multiplier, b.starts_at, b.ends_at, b.cancelled_at, COUNT(l.id) AS purchases, COALESCE(SUM(l.units), 0) AS units
+       FROM boosts b LEFT JOIN ledger l ON l.boost_id = b.id AND l.voided_at IS NULL
+       WHERE b.merchant_id = ? AND b.starts_at < ? AND b.ends_at > ? GROUP BY b.id ORDER BY b.starts_at`,
+      m.id, p.to, p.from,
+    ).map((b) => ({
+      id: n(b.id), label: String(b.label), multiplier: n(b.multiplier), starts_at: n(b.starts_at), ends_at: n(b.ends_at),
+      cancelled: b.cancelled_at != null, purchases: n(b.purchases), units: n(b.units),
+    })),
     welcome: (() => {
       const w = one(
         `SELECT COUNT(*) AS n, COALESCE(SUM(units), 0) AS units FROM ledger WHERE merchant_id = ? AND kind = 'bonus' AND note = 'welcome' AND ${inPeriod}`,

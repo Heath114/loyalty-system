@@ -296,6 +296,91 @@ export function unitsFor(merchant: Merchant, amountFils: number | null, category
   return Math.floor(Math.round(amountFils * rate) / 1000)
 }
 
+export interface Boost {
+  id: number
+  merchant_id: number
+  label: string
+  label_ar: string | null
+  /** 1.5, 2, 3: what a purchase earns is multiplied by it, rounded down. */
+  multiplier: number
+  /** Only purchases in this category; null: every purchase. */
+  category_id: number | null
+  starts_at: number
+  ends_at: number
+  cancelled_at: number | null
+  created_at: number
+}
+
+export const MAX_BOOST_DAYS = 31
+export const MAX_BOOSTS = 20
+
+/** Bonus periods running now or still to come, soonest first. */
+export function boosts(db: DB, merchantId: number, now = Date.now()): (Boost & { category: string | null; purchases: number })[] {
+  return db
+    .prepare(
+      `SELECT b.*, k.name AS category, (SELECT COUNT(*) FROM ledger l WHERE l.boost_id = b.id AND l.voided_at IS NULL) AS purchases
+       FROM boosts b LEFT JOIN categories k ON k.id = b.category_id
+       WHERE b.merchant_id = ? AND b.cancelled_at IS NULL AND b.ends_at > ? ORDER BY b.starts_at, b.id`,
+    )
+    .all(merchantId, now) as unknown as (Boost & { category: string | null; purchases: number })[]
+}
+
+/** Bonus periods running right now, for the staff page and the customer's card page. */
+export function runningBoosts(db: DB, merchantId: number, now = Date.now()) {
+  return boosts(db, merchantId, now)
+    .filter((b) => b.starts_at <= now)
+    .map((b) => ({ id: b.id, label: b.label, label_ar: b.label_ar, multiplier: b.multiplier, category_id: b.category_id, ends_at: b.ends_at }))
+}
+
+/** The biggest bonus that applies to a purchase in this category right now, if any. */
+export function activeBoost(db: DB, merchantId: number, categoryId: number | null, now = Date.now()): Boost | undefined {
+  return db
+    .prepare(
+      `SELECT * FROM boosts WHERE merchant_id = ? AND cancelled_at IS NULL AND starts_at <= ? AND ends_at > ?
+         AND (category_id IS NULL OR category_id = ?) ORDER BY multiplier DESC, id LIMIT 1`,
+    )
+    .get(merchantId, now, now, categoryId ?? -1) as Boost | undefined
+}
+
+export interface BoostInput {
+  label: string
+  label_ar?: string | null
+  multiplier: number
+  category_id?: number | null
+  starts_at: number
+  ends_at: number
+}
+
+export function createBoost(db: DB, m: Merchant, b: BoostInput, now = Date.now()): Boost {
+  const label = String(b.label ?? '').trim()
+  if (!label || label.length > 60) throw new LoyaltyError('Name the bonus period, up to 60 characters')
+  const labelAr = String(b.label_ar ?? '').trim() || null
+  if (labelAr && labelAr.length > 60) throw new LoyaltyError('Keep the Arabic name under 60 characters')
+  const multiplier = Math.round(Number(b.multiplier) * 10) / 10
+  if (!(multiplier > 1 && multiplier <= 5)) throw new LoyaltyError('The multiplier is more than 1 and at most 5, like 1.5, 2 or 3')
+  const category = b.category_id == null || (b.category_id as unknown) === '' ? null : categoryById(db, m.id, Number(b.category_id)).id
+  const starts = Number(b.starts_at)
+  const ends = Number(b.ends_at)
+  if (!Number.isFinite(starts) || !Number.isFinite(ends) || ends <= starts) throw new LoyaltyError('The end must be after the start')
+  if (ends <= now) throw new LoyaltyError('That period is already over')
+  if (ends - starts > MAX_BOOST_DAYS * 86_400_000) throw new LoyaltyError(`A bonus period lasts at most ${MAX_BOOST_DAYS} days`)
+  return tx(db, () => {
+    if (boosts(db, m.id, now).length >= MAX_BOOSTS) throw new LoyaltyError(`At most ${MAX_BOOSTS} bonus periods planned at once`, 409)
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO boosts (merchant_id, label, label_ar, multiplier, category_id, starts_at, ends_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(m.id, label, labelAr, multiplier, category, Math.max(starts, now - 60_000), ends, now)
+    return db.prepare('SELECT * FROM boosts WHERE id = ?').get(lastInsertRowid) as unknown as Boost
+  })
+}
+
+/** Ends a bonus period now, or before it starts. Purchases it already boosted keep what they earned. */
+export function cancelBoost(db: DB, m: Merchant, id: number): void {
+  const { changes } = db
+    .prepare('UPDATE boosts SET cancelled_at = ? WHERE id = ? AND merchant_id = ? AND cancelled_at IS NULL')
+    .run(Date.now(), id, m.id)
+  if (!changes) throw new LoyaltyError('Bonus period not found', 404)
+}
+
 /** The category a purchase goes in. Once a merchant has categories, every purchase needs one. */
 function purchaseCategory(db: DB, merchant: Merchant, categoryId: number | null | undefined): Category | null {
   if (categoryId == null || (categoryId as unknown) === '') {
@@ -333,19 +418,26 @@ function replay(db: DB, prior: { card_id: number; units: number }, serial: strin
  */
 export function earn(
   db: DB, merchant: Merchant, serial: string,
-  opts: { amountFils?: number | null; categoryId?: number | null; staffId?: number | null; idempotencyKey?: string },
+  opts: { amountFils?: number | null; categoryId?: number | null; staffId?: number | null; idempotencyKey?: string; now?: number },
 ): Movement {
   return tx(db, () => {
     const prior = existing(db, merchant.id, opts.idempotencyKey)
     if (prior) return replay(db, prior, serial)
     const card = merchantCard(db, merchant.id, serial)
     const category = purchaseCategory(db, merchant, opts.categoryId)
-    const units = unitsFor(merchant, opts.amountFils ?? null, category)
-    const now = Math.max(Date.now(), card.updated_at + 1)
+    const base = unitsFor(merchant, opts.amountFils ?? null, category)
+    const clock = opts.now ?? Date.now()
+    const boost = base > 0 ? activeBoost(db, merchant.id, category?.id ?? null, clock) : undefined
+    // Rounded to 3 places first, so 3 x 1.1 is 3, never 3.3000000000000003 floored by luck the other way.
+    const units = boost ? Math.floor(Math.round(base * boost.multiplier * 1000) / 1000) : base
+    const now = Math.max(clock, card.updated_at + 1)
     db.prepare(
-      `INSERT INTO ledger (merchant_id, card_id, kind, units, amount_fils, category_id, staff_id, idempotency_key, created_at)
-       VALUES (?, ?, 'earn', ?, ?, ?, ?, ?, ?)`,
-    ).run(merchant.id, card.id, units, opts.amountFils ?? null, category?.id ?? null, opts.staffId ?? null, opts.idempotencyKey ?? null, now)
+      `INSERT INTO ledger (merchant_id, card_id, kind, units, amount_fils, category_id, boost_id, staff_id, idempotency_key, created_at)
+       VALUES (?, ?, 'earn', ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      merchant.id, card.id, units, opts.amountFils ?? null, category?.id ?? null, boost?.id ?? null, opts.staffId ?? null,
+      opts.idempotencyKey ?? null, now,
+    )
     db.prepare('UPDATE cards SET balance = balance + ?, lifetime_earned = lifetime_earned + ?, updated_at = ? WHERE id = ?').run(
       units, units, now, card.id,
     )

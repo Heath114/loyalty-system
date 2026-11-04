@@ -8,7 +8,8 @@ import {
   MIN_PASSWORD, parseLatLng, removeImage, revokeStaff, sessionAdmin, setImage, staffList, updateMerchant, type Admin,
 } from '../admin.ts'
 import {
-  addLocation, adjust, archiveCategory, archiveReward, categories, createCategory, createReward, crossedReward, deleteMember, locations,
+  addLocation, adjust, archiveCategory, archiveReward, boosts, cancelBoost, categories, createBoost, createCategory, createReward,
+  crossedReward, deleteMember, locations,
   LoyaltyError, MAX_CATEGORIES, MAX_LOCATIONS, MAX_REWARDS, merchantById, removeLocation, rewards, updateCategory, updateReward,
   type Merchant,
 } from '../loyalty.ts'
@@ -100,6 +101,7 @@ export function adminRoutes(deps: Deps) {
       images: imageSlots(db, m),
       categories: categories(db, m.id),
       rewards: rewards(db, m.id),
+      boosts: boosts(db, m.id),
       reminders: reminders(db, m.id),
       triggers: triggers(db, m.id),
       campaigns: campaigns(db, m.id).slice(0, 50),
@@ -149,6 +151,22 @@ export function adminRoutes(deps: Deps) {
   )
   app.delete('/api/admin/rewards/:id', (c) => {
     archiveReward(db, c.get('merchant'), num(c.req.param('id')))
+    return c.json({ ok: true })
+  })
+
+  /** A bonus period, from and to "2026-11-07 00:00" in the merchant's time zone. */
+  app.post('/api/admin/boosts', async (c) => {
+    const body = await c.req.json<{ label?: string; label_ar?: string; multiplier?: number; category_id?: number | null; starts?: string; ends?: string }>()
+    const m = c.get('merchant')
+    const boost = createBoost(db, m, {
+      label: String(body.label ?? ''), label_ar: body.label_ar, multiplier: Number(body.multiplier), category_id: body.category_id ?? null,
+      starts_at: body.starts ? localToEpoch(m.timezone, String(body.starts)) : Date.now(),
+      ends_at: localToEpoch(m.timezone, String(body.ends ?? '')),
+    })
+    return c.json({ ok: true, boost })
+  })
+  app.delete('/api/admin/boosts/:id', (c) => {
+    cancelBoost(db, c.get('merchant'), num(c.req.param('id')))
     return c.json({ ok: true })
   })
 

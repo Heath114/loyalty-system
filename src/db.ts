@@ -316,6 +316,23 @@ const MIGRATIONS = [
   -- One referral bonus per card per friend, whatever runs twice.
   CREATE UNIQUE INDEX ledger_referral ON ledger(card_id, ref_id) WHERE kind = 'bonus' AND note = 'referral';
   `,
+  // 9: bonus periods, "double points this weekend", on everything or one category.
+  `
+  CREATE TABLE boosts (
+    id           INTEGER PRIMARY KEY,
+    merchant_id  INTEGER NOT NULL REFERENCES merchants(id),
+    label        TEXT NOT NULL,
+    label_ar     TEXT,
+    multiplier   REAL NOT NULL CHECK (multiplier > 1 AND multiplier <= 5),
+    category_id  INTEGER REFERENCES categories(id),
+    starts_at    INTEGER NOT NULL,
+    ends_at      INTEGER NOT NULL CHECK (ends_at > starts_at),
+    cancelled_at INTEGER,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX boosts_merchant ON boosts(merchant_id, starts_at);
+  ALTER TABLE ledger ADD COLUMN boost_id INTEGER REFERENCES boosts(id);
+  `,
 ]
 
 /** opts.version stops the migrations at that version: only tests use it, to check an upgrade keeps data. */
