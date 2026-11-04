@@ -145,14 +145,14 @@ export function campaigns(db: DB, merchantId: number): (Campaign & { sent: numbe
     .all(merchantId) as unknown as (Campaign & { sent: number })[]
 }
 
-export function reminders(db: DB, merchantId: number): (Reminder & { sent: number; category: string })[] {
+export function reminders(db: DB, merchantId: number): (Reminder & { sent: number; category: string; category_ar: string | null })[] {
   return db
     .prepare(
-      `SELECT r.*, k.name AS category, (SELECT COUNT(*) FROM messages m WHERE m.reminder_id = r.id) AS sent
+      `SELECT r.*, k.name AS category, k.name_ar AS category_ar, (SELECT COUNT(*) FROM messages m WHERE m.reminder_id = r.id) AS sent
        FROM reminders r JOIN categories k ON k.id = r.category_id
        WHERE r.merchant_id = ? AND r.archived_at IS NULL ORDER BY k.sort, k.id, r.days`,
     )
-    .all(merchantId) as unknown as (Reminder & { sent: number; category: string })[]
+    .all(merchantId) as unknown as (Reminder & { sent: number; category: string; category_ar: string | null })[]
 }
 
 function reminderById(db: DB, merchantId: number, id: number): Reminder {

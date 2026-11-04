@@ -85,6 +85,57 @@ export function publicRoutes({ db, config, google }: Deps) {
     return c.body(qrSvg(`${config.publicUrl}/m/${m.slug}`), 200, { 'Content-Type': 'image/svg+xml' })
   })
 
+  /** A page to print for the counter: the merchant's name, the reward, and the join QR, in both languages. */
+  app.get('/m/:slug/poster', (c) => {
+    const m = merchantOr404(c.req.param('slug'))
+    const reward = m.program === 'stamps'
+      ? { en: `Collect ${m.reward_threshold} stamps, get ${m.reward_text}`, ar: `اجمع ${m.reward_threshold} طوابع واحصل على ${m.reward_text_ar ?? m.reward_text}` }
+      : { en: `Earn points every visit. At ${m.reward_threshold}: ${m.reward_text}`, ar: `اكسب النقاط في كل زيارة. عند ${m.reward_threshold} نقطة: ${m.reward_text_ar ?? m.reward_text}` }
+    return c.html(html`<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${m.name} · QR</title>
+<style>
+@page{size:A5;margin:0}
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#111;font:16px/1.4 -apple-system,system-ui,Tahoma,"Segoe UI",sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.sheet{max-width:148mm;min-height:210mm;margin:0 auto;display:flex;flex-direction:column;text-align:center}
+.band{background:${m.bg_color};color:${m.fg_color};padding:12mm 10mm 9mm}
+.band h1{margin:0;font-size:28px;line-height:1.2}
+.band p{margin:4px 0 0;opacity:.85}
+.body{flex:1;padding:8mm 12mm;display:flex;flex-direction:column;align-items:center;gap:5mm}
+.ar{font-size:24px;font-weight:700;margin:0}
+.en{font-size:18px;font-weight:600;margin:0;direction:ltr}
+.qr{width:88mm;max-width:100%}
+.qr svg{width:100%;height:auto;display:block}
+.reward{font-size:15px;margin:0}
+.foot{font-size:12px;color:#555;padding:0 12mm 9mm}
+.print{position:fixed;inset-inline-start:12px;top:12px;font:600 14px system-ui;padding:10px 14px;border-radius:10px;border:0;background:#111;color:#fff;cursor:pointer}
+@media print{.print{display:none}}
+</style>
+</head>
+<body>
+<button class="print" onclick="window.print()">Print · طباعة</button>
+<div class="sheet">
+  <div class="band"><h1>${m.name_ar ?? m.name}</h1>${m.name_ar ? html`<p dir="ltr">${m.name}</p>` : ''}</div>
+  <div class="body">
+    <p class="ar">امسح الرمز واحصل على بطاقة الولاء</p>
+    <p class="en">Scan to get your loyalty card</p>
+    <div class="qr">${raw(qrSvg(`${config.publicUrl}/m/${m.slug}`))}</div>
+    <p class="reward">${reward.ar}</p>
+    <p class="reward" dir="ltr">${reward.en}</p>
+  </div>
+  <div class="foot">
+    <p>لا حاجة إلى تطبيق: تُحفظ البطاقة في Apple Wallet أو Google Wallet.</p>
+    <p dir="ltr">No app needed: the card goes in Apple Wallet or Google Wallet.</p>
+  </div>
+</div>
+</body>
+</html>`)
+  })
+
   /** The square logo Google Wallet shows (Google fetches it from here). Falls back to the Apple icon, then a plain square. */
   app.get('/m/:slug/logo.png', (c) => {
     const m = merchantOr404(c.req.param('slug'))

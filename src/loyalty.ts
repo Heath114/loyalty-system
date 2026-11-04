@@ -44,8 +44,8 @@ export interface Card {
 }
 
 export class LoyaltyError extends Error {
-  readonly status: 400 | 404 | 409
-  constructor(message: string, status: 400 | 404 | 409 = 400) {
+  readonly status: 400 | 401 | 403 | 404 | 409 | 429
+  constructor(message: string, status: 400 | 401 | 403 | 404 | 409 | 429 = 400) {
     super(message)
     this.status = status
   }

@@ -27,12 +27,17 @@
  *       [--text-ar "..."] [--off] [--id 2 to change one]
  *   npm run merchant -- reminder-remove --slug phones --id 2
  *
+ * Dashboard sign-ins (PUBLIC_URL/admin). The password is shown once and must be changed at first sign-in:
+ *   npm run merchant -- admin --slug phones --email owner@example.com [--name "Owner"]
+ *   npm run merchant -- admin-reset --email owner@example.com     (forgotten password: a new one, every session ends)
+ *
  * Branches (the card shows up on the lock screen nearby):
  *   npm run merchant -- location --slug cafe --label "Abdoun" --lat 31.9539 --lng 35.8836 [--text "..."] [--text-ar "..."]
  *   npm run merchant -- location-remove --slug cafe --id 2
  */
 import { readFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
+import { createAdmin, resetAdminPassword } from '../src/admin.ts'
 import { openDb } from '../src/db.ts'
 import {
   addLocation, archiveCategory, categories, createCategory, createMerchant, locations, merchantBySlug, removeLocation, touchMerchant,
@@ -50,7 +55,7 @@ const IMAGE_NAMES = /^((icon|logo|strip|thumbnail)(@[23]x)?|square)\.png$/
 
 const STRING_OPTIONS = [
   'slug', 'name', 'name-ar', 'program', 'threshold', 'points-per-jod', 'reward', 'reward-ar', 'bg', 'fg', 'label', 'file',
-  'kind', 'text', 'text-ar', 'days', 'at', 'id', 'lat', 'lng', 'rate', 'fixed', 'category',
+  'kind', 'text', 'text-ar', 'days', 'at', 'id', 'lat', 'lng', 'rate', 'fixed', 'category', 'email',
 ] as const
 const [command, ...rest] = process.argv.slice(2)
 const { values: a } = parseArgs({
@@ -159,6 +164,17 @@ switch (command) {
     console.log(`Category ${a.id} taken off the staff page. Purchases already in it keep it.`)
     break
   }
+  case 'admin': {
+    const m = merchant()
+    const { admin, password } = await createAdmin(db, m, { email: a.email!, name: a.name })
+    console.log(`Dashboard sign-in for ${m.name}: ${admin.email}\nPassword, shown once (they choose their own at first sign-in):\n${password}`)
+    break
+  }
+  case 'admin-reset': {
+    const { admin, password } = await resetAdminPassword(db, a.email!)
+    console.log(`New password for ${admin.email}, shown once; their sessions have ended:\n${password}`)
+    break
+  }
   case 'reminder': {
     const m = merchant()
     const input = { category_id: Number(a.category), days: Number(a.days), text: a.text!, text_ar: a['text-ar'], enabled: !a.off }
@@ -185,6 +201,6 @@ switch (command) {
     break
   }
   default:
-    console.log('Commands: create, staff-key, image, list, show, trigger, promo, promo-cancel, category, category-archive, reminder, reminder-remove, location, location-remove.')
+    console.log('Commands: create, staff-key, image, list, show, trigger, promo, promo-cancel, category, category-archive, reminder, reminder-remove, admin, admin-reset, location, location-remove.')
     console.log('See the comment at the top of scripts/merchant.ts.')
 }

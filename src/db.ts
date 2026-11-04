@@ -230,6 +230,33 @@ const MIGRATIONS = [
   CREATE INDEX ledger_merchant_time ON ledger(merchant_id, created_at);
   CREATE INDEX cards_merchant_created ON cards(merchant_id, created_at);
   `,
+  // 5: the merchant dashboard: people who run a merchant's program, and their signed-in sessions.
+  `
+  -- One email runs one merchant. Passwords are scrypt hashes; a password we made (a new admin, a
+  -- reset) must be changed at the first sign-in.
+  CREATE TABLE admins (
+    id                  INTEGER PRIMARY KEY,
+    merchant_id         INTEGER NOT NULL REFERENCES merchants(id),
+    email               TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    name                TEXT,
+    password_hash       TEXT NOT NULL,
+    must_change         INTEGER NOT NULL DEFAULT 1,
+    created_at          INTEGER NOT NULL,
+    password_changed_at INTEGER NOT NULL,
+    disabled_at         INTEGER
+  );
+  CREATE INDEX admins_merchant ON admins(merchant_id);
+
+  -- The token itself is only ever in the admin's browser; we keep its hash.
+  CREATE TABLE admin_sessions (
+    token_hash   TEXT PRIMARY KEY,
+    admin_id     INTEGER NOT NULL REFERENCES admins(id),
+    created_at   INTEGER NOT NULL,
+    expires_at   INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL
+  );
+  CREATE INDEX admin_sessions_admin ON admin_sessions(admin_id);
+  `,
 ]
 
 /** opts.version stops the migrations at that version: only tests use it, to check an upgrade keeps data. */

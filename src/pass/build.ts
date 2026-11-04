@@ -150,8 +150,9 @@ function images(db: DB, merchant: Merchant): PassFiles {
   const out: PassFiles = {}
   // square.png is the Google Wallet logo; Apple has no use for it.
   for (const r of rows) if (isPng(r.png) && r.name !== 'square.png') out[r.name] = r.png
-  // icon.png is required: without it the pass will not install.
-  for (const [name, size] of Object.entries(IMAGE_SIZES)) out[name] ??= solidPng(size, merchant.bg_color)
+  // icon.png is required: without it the pass will not install. The plain squares stand in only when
+  // nothing was uploaded: a stand-in @3x next to an uploaded icon.png would win on every iPhone.
+  if (!out['icon.png']) for (const [name, size] of Object.entries(IMAGE_SIZES)) out[name] ??= solidPng(size, merchant.bg_color)
   return out
 }
 
