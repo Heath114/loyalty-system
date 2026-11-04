@@ -39,6 +39,17 @@ export function howItWorks(m: Merchant, lang: Lang, mixed = false): string {
     : `Show this card at the counter when you pay. Every JOD earns ${m.points_per_jod} points. At ${m.reward_threshold} points you get: ${reward}.`
 }
 
+/** The extra rewards, one a line: "200 points: A case". Empty when the merchant has only the headline one. */
+export function rewardMenuText(m: Merchant, extra: { name: string; name_ar: string | null; cost: number }[], lang: Lang): string {
+  return extra
+    .map((r) => {
+      const name = lang === 'ar' ? (r.name_ar ?? r.name) : r.name
+      if (lang === 'ar') return `${r.cost} ${m.program === 'stamps' ? 'طوابع' : 'نقطة'}: ${name}`
+      return `${r.cost} ${m.program === 'stamps' ? (r.cost === 1 ? 'stamp' : 'stamps') : 'points'}: ${name}`
+    })
+    .join('\n')
+}
+
 /** "3 stamps to go", or "Ready to redeem" once a reward is waiting. */
 export function nextReward(m: Merchant, card: Card, lang: Lang): string {
   const left = m.reward_threshold - (card.balance % m.reward_threshold)

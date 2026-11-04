@@ -1,8 +1,8 @@
 import { createSign } from 'node:crypto'
 import type { Config, GoogleConfig } from './config.ts'
-import { rewardsAvailable, type Card, type Location, type Merchant } from './loyalty.ts'
+import { rewardsAvailable, type Card, type Location, type Merchant, type Reward } from './loyalty.ts'
 import { formatSerial } from './pass/build.ts'
-import { howItWorks, nextReward, rewardText } from './pass/copy.ts'
+import { howItWorks, nextReward, rewardMenuText, rewardText } from './pass/copy.ts'
 import { parseColor } from './pass/png.ts'
 import { barcodeMessage } from './tokens.ts'
 
@@ -34,8 +34,8 @@ export interface GoogleMessage {
 export interface GoogleWallet {
   classId(m: Merchant): string
   objectId(card: Card): string
-  /** Creates or updates the merchant's class: name, logo, colours, reward text, branches. mixed: earns by category. */
-  syncClass(m: Merchant, locations: Location[], mixed?: boolean): Promise<void>
+  /** Creates or updates the merchant's class: name, logo, colours, rewards, branches. */
+  syncClass(m: Merchant, extras: ClassExtras): Promise<void>
   /** Creates or updates a card's object with its current balance. */
   upsertCard(m: Merchant, card: Card): Promise<void>
   /** Pushes a new balance. notify: also a lock-screen notification. False if the card is not in Google Wallet. */
@@ -68,7 +68,15 @@ export function signJwt(claims: Record<string, unknown>, privateKey: string): st
   return `${unsigned}.${createSign('RSA-SHA256').update(unsigned).sign(privateKey).toString('base64url')}`
 }
 
-export function classJson(config: Config, g: GoogleConfig, m: Merchant, locations: Location[], mixed = false): Record<string, unknown> {
+/** What a class shows besides the merchant row. mixed: earning is by category, so no single rate is promised. */
+export interface ClassExtras {
+  locations: Location[]
+  mixed?: boolean
+  rewards?: Reward[]
+}
+
+export function classJson(config: Config, g: GoogleConfig, m: Merchant, extras: ClassExtras): Record<string, unknown> {
+  const { locations, mixed = false, rewards = [] } = extras
   return {
     id: `${g.issuerId}.merchant-${m.slug}`,
     issuerName: m.name,
@@ -88,6 +96,9 @@ export function classJson(config: Config, g: GoogleConfig, m: Merchant, location
     textModulesData: [
       { id: 'reward', header: 'Reward', localizedHeader: localized('Reward', 'المكافأة'), body: rewardText(m, 'en'), localizedBody: localized(rewardText(m, 'en'), rewardText(m, 'ar')) },
       { id: 'how', header: 'How it works', localizedHeader: localized('How it works', 'طريقة الاستخدام'), body: howItWorks(m, 'en', mixed), localizedBody: localized(howItWorks(m, 'en', mixed), howItWorks(m, 'ar', mixed)) },
+      ...(rewards.length
+        ? [{ id: 'more', header: 'More rewards', localizedHeader: localized('More rewards', 'مكافآت أخرى'), body: rewardMenuText(m, rewards, 'en'), localizedBody: localized(rewardMenuText(m, rewards, 'en'), rewardMenuText(m, rewards, 'ar')) }]
+        : []),
     ],
     // Google notifies near these, within a radius it chooses, for customers who allow location.
     merchantLocations: locations.slice(0, 10).map((l) => ({ latitude: l.latitude, longitude: l.longitude })),
@@ -181,7 +192,7 @@ export function googleWallet(config: Config, f: typeof fetch = fetch): GoogleWal
     classId,
     objectId,
 
-    syncClass: (m, locations, mixed) => upsert('loyaltyClass', classId(m), classJson(config, g, m, locations, mixed)),
+    syncClass: (m, extras) => upsert('loyaltyClass', classId(m), classJson(config, g, m, extras)),
 
     upsertCard: (m, card) => upsert('loyaltyObject', objectId(card), objectJson(config, g, m, card)),
 

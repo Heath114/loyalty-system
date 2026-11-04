@@ -289,6 +289,22 @@ const MIGRATIONS = [
   CREATE INDEX ledger_category ON ledger(merchant_id, category_id, created_at);
   CREATE INDEX ledger_merchant_time ON ledger(merchant_id, created_at);
   `,
+  // 7: more rewards than the one on the card: "200 points: a case, 1500: earbuds". The merchant's own
+  // reward (reward_threshold, reward_text) stays the headline the card counts towards.
+  `
+  CREATE TABLE rewards (
+    id          INTEGER PRIMARY KEY,
+    merchant_id INTEGER NOT NULL REFERENCES merchants(id),
+    name        TEXT NOT NULL,
+    name_ar     TEXT,
+    cost        INTEGER NOT NULL CHECK (cost > 0),
+    sort        INTEGER NOT NULL DEFAULT 0,
+    archived_at INTEGER,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX rewards_merchant ON rewards(merchant_id);
+  ALTER TABLE ledger ADD COLUMN reward_id INTEGER REFERENCES rewards(id);
+  `,
 ]
 
 /** opts.version stops the migrations at that version: only tests use it, to check an upgrade keeps data. */

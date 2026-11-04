@@ -1,7 +1,7 @@
 import { notifyCards, type Pusher } from './apns.ts'
 import type { DB } from './db.ts'
 import type { GoogleWallet } from './google.ts'
-import { cardBySerial, categories, locations, merchantById, type Card, type Merchant } from './loyalty.ts'
+import { cardBySerial, categories, locations, merchantById, rewards, type Card, type Merchant } from './loyalty.ts'
 import type { Message, Outgoing } from './messages.ts'
 
 /** Where card updates go: Apple through APNs, Google through its Wallet API (when configured). */
@@ -91,7 +91,7 @@ export async function deliverMessages(db: DB, ch: Channels, sent: { outgoing: Ou
 /** Makes sure Google has the merchant's current class. Call before creating a card's object. */
 export async function syncGoogleClass(db: DB, google: GoogleWallet, m: Merchant): Promise<void> {
   if (m.google_synced_at && m.google_synced_at >= m.changed_at) return
-  await google.syncClass(m, locations(db, m.id), categories(db, m.id).length > 0)
+  await google.syncClass(m, { locations: locations(db, m.id), mixed: categories(db, m.id).length > 0, rewards: rewards(db, m.id) })
   db.prepare('UPDATE merchants SET google_synced_at = ? WHERE id = ?').run(Math.max(Date.now(), m.changed_at), m.id)
 }
 

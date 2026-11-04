@@ -1,8 +1,8 @@
 import type { Config } from '../config.ts'
 import type { DB } from '../db.ts'
-import { categories, locations as merchantLocations, rewardsAvailable, type Card, type Location, type Merchant } from '../loyalty.ts'
+import { categories, locations as merchantLocations, rewards as merchantRewards, rewardsAvailable, type Card, type Location, type Merchant, type Reward } from '../loyalty.ts'
 import { barcodeMessage } from '../tokens.ts'
-import { howItWorks, nearby, nextReward, rewardText, welcome } from './copy.ts'
+import { howItWorks, nearby, nextReward, rewardMenuText, rewardText, welcome } from './copy.ts'
 import { packPass, type PassFiles } from './pkpass.ts'
 import { isPng, solidPng } from './png.ts'
 
@@ -16,7 +16,7 @@ export function formatSerial(serial: string): string {
  * on the phone's language. Per-card values (the reward text, progress) are written into the strings
  * file of that card's pass.
  */
-function strings(merchant: Merchant, card: Card, mixed: boolean): { en: Record<string, string>; ar: Record<string, string> } {
+function strings(merchant: Merchant, card: Card, mixed: boolean, extra: Reward[]): { en: Record<string, string>; ar: Record<string, string> } {
   const stamps = merchant.program === 'stamps'
   return {
     en: {
@@ -32,6 +32,8 @@ function strings(merchant: Merchant, card: Card, mixed: boolean): { en: Record<s
       REWARD_TEXT: rewardText(merchant, 'en'),
       HOW: 'HOW IT WORKS',
       HOW_TEXT: howItWorks(merchant, 'en', mixed),
+      MORE: 'MORE REWARDS',
+      MORE_TEXT: rewardMenuText(merchant, extra, 'en'),
       CARD_NO: 'CARD NUMBER',
     },
     ar: {
@@ -47,6 +49,8 @@ function strings(merchant: Merchant, card: Card, mixed: boolean): { en: Record<s
       REWARD_TEXT: rewardText(merchant, 'ar'),
       HOW: 'طريقة الاستخدام',
       HOW_TEXT: howItWorks(merchant, 'ar', mixed),
+      MORE: 'مكافآت أخرى',
+      MORE_TEXT: rewardMenuText(merchant, extra, 'ar'),
       CARD_NO: 'رقم البطاقة',
     },
   }
@@ -63,6 +67,8 @@ export interface PassExtras {
   /** The newest message sent to this card, already in the card's language. */
   message?: string | null
   locations?: Location[]
+  /** The merchant's extra rewards, listed on the back. */
+  rewards?: Reward[]
 }
 
 export function passJson(config: Config, merchant: Merchant, card: Card, extras: PassExtras = {}): Record<string, unknown> {
@@ -101,6 +107,7 @@ export function passJson(config: Config, merchant: Merchant, card: Card, extras:
         // The field is there from the first version of the pass, so the first message is a change too.
         { key: 'news', label: 'NEWS', value: extras.message ?? welcome(merchant, card.lang), changeMessage: '%@' },
         { key: 'reward', label: 'REWARD', value: 'REWARD_TEXT' },
+        ...(extras.rewards?.length ? [{ key: 'more', label: 'MORE', value: 'MORE_TEXT' }] : []),
         { key: 'how', label: 'HOW', value: 'HOW_TEXT' },
         { key: 'serial', label: 'CARD_NO', value: formatSerial(card.serial) },
       ],
@@ -166,8 +173,9 @@ export function latestMessage(db: DB, card: Card): string | null {
 }
 
 export function buildPass(db: DB, config: Config, merchant: Merchant, card: Card): Uint8Array {
-  const s = strings(merchant, card, categories(db, merchant.id).length > 0)
-  const extras = { message: latestMessage(db, card), locations: merchantLocations(db, merchant.id) }
+  const extra = merchantRewards(db, merchant.id)
+  const s = strings(merchant, card, categories(db, merchant.id).length > 0, extra)
+  const extras = { message: latestMessage(db, card), locations: merchantLocations(db, merchant.id), rewards: extra }
   return packPass(config.pass, {
     'pass.json': Buffer.from(JSON.stringify(passJson(config, merchant, card, extras))),
     'en.lproj/pass.strings': stringsFile(s.en),

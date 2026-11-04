@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createAdmin } from '../src/admin.ts'
-import { adjust, cardBySerial, earn, enrol, history, LoyaltyError, redeem, undoLast, UNDO_WINDOW_MS } from '../src/loyalty.ts'
+import { unzipSync } from 'fflate'
+import { classJson } from '../src/google.ts'
+import {
+  adjust, archiveReward, cardBySerial, createReward, earn, enrol, history, LoyaltyError, merchantById, redeem, rewards, undoLast, UNDO_WINDOW_MS,
+} from '../src/loyalty.ts'
+import { buildPass } from '../src/pass/build.ts'
 import { lastDays, members, report } from '../src/reports.ts'
-import { settle, setup } from './helpers.ts'
+import { settle, setup, testGoogleKeys } from './helpers.ts'
 
 function balanceIsLedgerSum(db: ReturnType<typeof setup>['db'], cardId: number) {
   const row = db.prepare('SELECT c.balance, (SELECT COALESCE(SUM(units), 0) FROM ledger WHERE card_id = c.id) AS sum FROM cards c WHERE c.id = ?').get(cardId) as { balance: number; sum: number }
@@ -113,4 +118,47 @@ test('adjust: by hand with a reason, never below zero, not a visit; through the 
   assert.deepEqual(pushed.at(-1), ['f'.repeat(64)])
   const row = db.prepare("SELECT admin_id FROM ledger WHERE kind = 'adjust' ORDER BY id DESC LIMIT 1").get() as { admin_id: number }
   assert.ok(row.admin_id, 'who adjusted is recorded')
+})
+
+test('reward menu: staff choose from what the card can afford; the cost comes off; undo gives it back', async () => {
+  const { app, db, phones, staffKey } = setup()
+  const key = staffKey(phones.id)
+  const post = (path: string, body: unknown) =>
+    app.request(path, { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const small = createReward(db, phones, { name: 'Phone case', name_ar: 'غطاء هاتف', cost: 40 })
+  const big = createReward(db, phones, { name: 'Earbuds', cost: 1500 })
+  const card = enrol(db, phones, { name: 'Lina', marketingConsent: true })
+  adjust(db, phones, card.serial, { units: 60, note: 'test' })
+
+  const look = (await (await post('/api/staff/lookup', { code: card.serial })).json()) as any
+  assert.deepEqual(look.card.menu.map((r: any) => [r.name, r.cost, r.affordable]), [['Free case', 100, false], ['Phone case', 40, true], ['Earbuds', 1500, false]])
+
+  assert.equal((await post('/api/staff/redeem', { serial: card.serial, requestId: 'r0' })).status, 409, 'the headline reward needs 100')
+  assert.equal((await post('/api/staff/redeem', { serial: card.serial, rewardId: big.id, requestId: 'r1' })).status, 409)
+  const ok = (await (await post('/api/staff/redeem', { serial: card.serial, rewardId: small.id, requestId: 'r2' })).json()) as any
+  assert.equal(ok.card.balance, 20)
+  assert.equal(history(db, cardBySerial(db, card.serial)!, 1)[0].reward_ar, 'غطاء هاتف')
+  const undone = (await (await post('/api/staff/undo', { serial: card.serial, requestId: 'u' })).json()) as any
+  assert.equal(undone.card.balance, 60)
+
+  archiveReward(db, phones, small.id)
+  assert.equal((await post('/api/staff/redeem', { serial: card.serial, rewardId: small.id, requestId: 'r3' })).status, 409, 'off the menu')
+  assert.equal((await post('/api/staff/redeem', { serial: card.serial, rewardId: 99999, requestId: 'r4' })).status, 404)
+})
+
+test('reward menu: validated, listed on the back of the Apple card and the Google class', () => {
+  const { db, config, cafe } = setup()
+  assert.throws(() => createReward(db, cafe, { name: 'Huge', cost: 51 }), LoyaltyError, 'stamp rewards cost at most 50')
+  assert.throws(() => createReward(db, cafe, { name: '', cost: 2 }), LoyaltyError)
+  assert.throws(() => createReward(db, cafe, { name: 'Half', cost: 1.5 }), LoyaltyError)
+  createReward(db, cafe, { name: 'Small coffee', name_ar: 'قهوة صغيرة', cost: 2 })
+  const card = enrol(db, cafe, { name: 'Lina', marketingConsent: true })
+  const files = unzipSync(buildPass(db, config, cafe, card))
+  const json = JSON.parse(Buffer.from(files['pass.json']).toString())
+  assert.ok(json.storeCard.backFields.some((f: any) => f.key === 'more' && f.value === 'MORE_TEXT'))
+  assert.match(Buffer.from(files['en.lproj/pass.strings'].slice(2)).toString('utf16le'), /"MORE_TEXT" = "2 stamps: Small coffee";/)
+  assert.match(Buffer.from(files['ar.lproj/pass.strings'].slice(2)).toString('utf16le'), /"MORE_TEXT" = "2 طوابع: قهوة صغيرة";/)
+  const cls = classJson(config, testGoogleKeys().config, cafe, { locations: [], rewards: rewards(db, cafe.id) }) as any
+  assert.equal(cls.textModulesData.find((t: any) => t.id === 'more').body, '2 stamps: Small coffee')
+  assert.ok(merchantById(db, cafe.id).changed_at > 0, 'every card refreshes')
 })

@@ -75,7 +75,8 @@ export interface Report {
     units: number
     amount_fils: number
   }
-  rewards: { redeemed: number; waiting: number }
+  /** given: per reward, the headline one (id null) first. */
+  rewards: { redeemed: number; waiting: number; given: { id: number | null; name: string; name_ar: string | null; count: number }[] }
   daily: { date: string; joined: number; visits: number }[]
   categories: { id: number; name: string; name_ar: string | null; archived: boolean; purchases: number; amount_fils: number; units: number }[]
   /** undone: entries this key took back within the undo window. Many is worth a look. */
@@ -176,13 +177,31 @@ export function report(db: DB, m: Merchant, p: Period): Report {
       count: n(visits.count), visitors: n(visits.visitors), repeat_visitors: n(repeat.n), returning_visitors: n(returning.n),
       units: n(visits.units), amount_fils: n(visits.amount),
     },
-    rewards: { redeemed: n(redeemed.n), waiting: n(waiting.n) },
+    rewards: { redeemed: n(redeemed.n), waiting: n(waiting.n), given: rewardsGiven(db, m, p) },
     daily,
     categories,
     staff,
     unattributed_visits: n(unattributed.n),
     messages: messageResults(db, m, p),
   }
+}
+
+/** How many of each reward were given in the period: the headline one first, then the menu. */
+function rewardsGiven(db: DB, m: Merchant, p: Period) {
+  const rows = db
+    .prepare(
+      `SELECT l.reward_id AS id, COUNT(*) AS count FROM ledger l
+       WHERE l.merchant_id = ? AND l.kind = 'redeem' AND l.voided_at IS NULL AND l.created_at >= ? AND l.created_at < ? GROUP BY l.reward_id`,
+    )
+    .all(m.id, p.from, p.to) as { id: number | null; count: number }[]
+  const count = new Map(rows.map((r) => [r.id, Number(r.count)]))
+  const menu = db.prepare('SELECT id, name, name_ar, archived_at FROM rewards WHERE merchant_id = ? ORDER BY cost, id').all(m.id) as {
+    id: number; name: string; name_ar: string | null; archived_at: number | null
+  }[]
+  return [
+    { id: null, name: m.reward_text, name_ar: m.reward_text_ar, count: count.get(null) ?? 0 },
+    ...menu.filter((r) => r.archived_at == null || count.has(r.id)).map((r) => ({ id: r.id, name: r.name, name_ar: r.name_ar, count: count.get(r.id) ?? 0 })),
+  ]
 }
 
 /** Every message sent in the period, grouped by what sent it, with how many members came back after it. */

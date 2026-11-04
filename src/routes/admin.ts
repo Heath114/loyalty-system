@@ -8,9 +8,9 @@ import {
   MIN_PASSWORD, parseLatLng, removeImage, revokeStaff, sessionAdmin, setImage, staffList, updateMerchant, type Admin,
 } from '../admin.ts'
 import {
-  addLocation, adjust, archiveCategory, categories, createCategory, crossedReward, deleteMember, locations, LoyaltyError, MAX_CATEGORIES,
-  MAX_LOCATIONS,
-  merchantById, removeLocation, updateCategory, type Merchant,
+  addLocation, adjust, archiveCategory, archiveReward, categories, createCategory, createReward, crossedReward, deleteMember, locations,
+  LoyaltyError, MAX_CATEGORIES, MAX_LOCATIONS, MAX_REWARDS, merchantById, removeLocation, rewards, updateCategory, updateReward,
+  type Merchant,
 } from '../loyalty.ts'
 import {
   campaigns, cancelCampaign, createCampaign, createReminder, localToEpoch, MAX_PER_30_DAYS, MAX_PER_DAY, MAX_REMINDERS, MAX_TEXT,
@@ -99,6 +99,7 @@ export function adminRoutes(deps: Deps) {
       google: !!deps.google,
       images: imageSlots(db, m),
       categories: categories(db, m.id),
+      rewards: rewards(db, m.id),
       reminders: reminders(db, m.id),
       triggers: triggers(db, m.id),
       campaigns: campaigns(db, m.id).slice(0, 50),
@@ -107,7 +108,7 @@ export function adminRoutes(deps: Deps) {
       admins: admins(db, m.id),
       limits: {
         text: MAX_TEXT, per_day: MAX_PER_DAY, per_30_days: MAX_PER_30_DAYS, hours: SEND_HOURS, locations: MAX_LOCATIONS,
-        categories: MAX_CATEGORIES, reminders: MAX_REMINDERS, password: MIN_PASSWORD, image_bytes: MAX_IMAGE_BYTES,
+        categories: MAX_CATEGORIES, reminders: MAX_REMINDERS, rewards: MAX_REWARDS, password: MIN_PASSWORD, image_bytes: MAX_IMAGE_BYTES,
       },
     })
   })
@@ -139,6 +140,15 @@ export function adminRoutes(deps: Deps) {
   )
   app.delete('/api/admin/categories/:id', (c) => {
     archiveCategory(db, c.get('merchant'), num(c.req.param('id')))
+    return c.json({ ok: true })
+  })
+
+  app.post('/api/admin/rewards', async (c) => c.json({ ok: true, reward: createReward(db, c.get('merchant'), await c.req.json()) }))
+  app.put('/api/admin/rewards/:id', async (c) =>
+    c.json({ ok: true, reward: updateReward(db, c.get('merchant'), num(c.req.param('id')), await c.req.json()) }),
+  )
+  app.delete('/api/admin/rewards/:id', (c) => {
+    archiveReward(db, c.get('merchant'), num(c.req.param('id')))
     return c.json({ ok: true })
   })
 

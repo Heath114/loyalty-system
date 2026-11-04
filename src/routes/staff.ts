@@ -5,8 +5,8 @@ import { createMiddleware } from 'hono/factory'
 import { raw } from 'hono/html'
 import type { Deps } from '../app.ts'
 import {
-  categories, crossedReward, earn, history, LoyaltyError, merchantById, merchantCard, redeem, rewardsAvailable, undoLast, type Card,
-  type Merchant,
+  categories, crossedReward, earn, history, LoyaltyError, merchantById, merchantCard, redeem, rewardMenu, rewardsAvailable, undoLast,
+  type Card, type Merchant,
 } from '../loyalty.ts'
 import { cardChanged } from '../notify.ts'
 import { parseBarcode, sha256 } from '../tokens.ts'
@@ -17,7 +17,7 @@ const STAFF_JS = readFileSync(new URL('./staff.client.js', import.meta.url), 'ut
 
 type Env = { Variables: { merchant: Merchant; staffId: number } }
 
-function summary(m: Merchant, card: Card) {
+function summary(db: Deps['db'], m: Merchant, card: Card) {
   return {
     serial: card.serial,
     name: card.member_name,
@@ -26,6 +26,9 @@ function summary(m: Merchant, card: Card) {
     threshold: m.reward_threshold,
     rewardsAvailable: rewardsAvailable(m, card),
     rewardText: m.reward_text,
+    rewardTextAr: m.reward_text_ar,
+    /** Every reward, the headline first; staff pick from the affordable ones. */
+    menu: rewardMenu(db, m, card),
   }
 }
 
@@ -114,7 +117,7 @@ export function staffRoutes(deps: Deps) {
     const body = await c.req.json<{ code?: string }>()
     const m = c.get('merchant')
     const card = merchantCard(db, m.id, resolveSerial(config.secret, body.code))
-    return c.json({ card: summary(m, card), history: history(db, card, 5) })
+    return c.json({ card: summary(db, m, card), history: history(db, card, 5) })
   })
 
   app.post('/api/staff/earn', async (c) => {
@@ -124,7 +127,7 @@ export function staffRoutes(deps: Deps) {
       amountFils: body.amountFils ?? null, categoryId: body.categoryId ?? null, staffId: c.get('staffId'), idempotencyKey: body.requestId,
     })
     if (!r.replayed) pushUpdate(r.card.serial, crossedReward(m, r.card.balance, r.units))
-    return c.json({ card: summary(m, r.card), units: r.units, replayed: r.replayed })
+    return c.json({ card: summary(db, m, r.card), units: r.units, replayed: r.replayed })
   })
 
   /** Takes back this key's last entry on the card, within 10 minutes. */
@@ -133,15 +136,15 @@ export function staffRoutes(deps: Deps) {
     const m = c.get('merchant')
     const r = undoLast(db, m, String(body.serial ?? ''), { staffId: c.get('staffId'), idempotencyKey: body.requestId })
     if (!r.replayed) pushUpdate(r.card.serial)
-    return c.json({ card: summary(m, r.card), units: r.units, undone: r.undone, replayed: r.replayed })
+    return c.json({ card: summary(db, m, r.card), units: r.units, undone: r.undone, replayed: r.replayed })
   })
 
   app.post('/api/staff/redeem', async (c) => {
-    const body = await c.req.json<{ serial?: string; requestId?: string }>()
+    const body = await c.req.json<{ serial?: string; rewardId?: number | null; requestId?: string }>()
     const m = c.get('merchant')
-    const r = redeem(db, m, String(body.serial ?? ''), { staffId: c.get('staffId'), idempotencyKey: body.requestId })
+    const r = redeem(db, m, String(body.serial ?? ''), { rewardId: body.rewardId ?? null, staffId: c.get('staffId'), idempotencyKey: body.requestId })
     if (!r.replayed) pushUpdate(r.card.serial)
-    return c.json({ card: summary(m, r.card), units: r.units, replayed: r.replayed })
+    return c.json({ card: summary(db, m, r.card), units: r.units, replayed: r.replayed })
   })
 
   return app

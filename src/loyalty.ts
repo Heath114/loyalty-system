@@ -308,24 +308,112 @@ export function earn(
   })
 }
 
-/** Redeems one reward, spending reward_threshold units. */
+export interface Reward {
+  id: number
+  merchant_id: number
+  name: string
+  name_ar: string | null
+  cost: number
+  sort: number
+  archived_at: number | null
+  created_at: number
+}
+
+export const MAX_REWARDS = 20
+
+/** The merchant's extra rewards, cheapest first. The headline reward is the merchant's own, not in here. */
+export function rewards(db: DB, merchantId: number, opts: { archived?: boolean } = {}): Reward[] {
+  return db
+    .prepare(`SELECT * FROM rewards WHERE merchant_id = ? ${opts.archived ? '' : 'AND archived_at IS NULL'} ORDER BY cost, sort, id`)
+    .all(merchantId) as unknown as Reward[]
+}
+
+function rewardById(db: DB, merchantId: number, id: number): Reward {
+  const r = db.prepare('SELECT * FROM rewards WHERE id = ? AND merchant_id = ?').get(id, merchantId) as Reward | undefined
+  if (!r) throw new LoyaltyError('Reward not found', 404)
+  return r
+}
+
+export interface RewardInput {
+  name: string
+  name_ar?: string | null
+  cost: number
+}
+
+function checkReward(m: Merchant, r: RewardInput) {
+  const name = String(r.name ?? '').trim()
+  if (!name || name.length > 60) throw new LoyaltyError('Give the reward a name of up to 60 characters')
+  const nameAr = String(r.name_ar ?? '').trim() || null
+  if (nameAr && nameAr.length > 60) throw new LoyaltyError('Keep the Arabic name under 60 characters')
+  const cost = Number(r.cost)
+  const most = m.program === 'stamps' ? 50 : 1_000_000
+  if (!(Number.isInteger(cost) && cost >= 1 && cost <= most)) {
+    throw new LoyaltyError(m.program === 'stamps' ? 'A reward costs between 1 and 50 stamps' : 'A reward costs a whole number of points')
+  }
+  return { name, nameAr, cost }
+}
+
+/** The card lists every reward on its back, so a change refreshes every card. */
+export function createReward(db: DB, m: Merchant, r: RewardInput): Reward {
+  const v = checkReward(m, r)
+  return tx(db, () => {
+    if (rewards(db, m.id).length >= MAX_REWARDS) throw new LoyaltyError(`At most ${MAX_REWARDS} rewards`, 409)
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO rewards (merchant_id, name, name_ar, cost, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(m.id, v.name, v.nameAr, v.cost, Date.now())
+    touchMerchant(db, m.id)
+    return rewardById(db, m.id, Number(lastInsertRowid))
+  })
+}
+
+export function updateReward(db: DB, m: Merchant, id: number, r: RewardInput): Reward {
+  rewardById(db, m.id, id)
+  const v = checkReward(m, r)
+  db.prepare('UPDATE rewards SET name = ?, name_ar = ?, cost = ? WHERE id = ? AND merchant_id = ?').run(v.name, v.nameAr, v.cost, id, m.id)
+  touchMerchant(db, m.id)
+  return rewardById(db, m.id, id)
+}
+
+/** Off the menu. Rewards already given keep it in their history. */
+export function archiveReward(db: DB, m: Merchant, id: number): void {
+  rewardById(db, m.id, id)
+  db.prepare('UPDATE rewards SET archived_at = COALESCE(archived_at, ?) WHERE id = ? AND merchant_id = ?').run(Date.now(), id, m.id)
+  touchMerchant(db, m.id)
+}
+
+/** Every reward a member can choose from, the headline one first, with whether this card can have it now. */
+export function rewardMenu(db: DB, m: Merchant, card?: Card) {
+  const all = [
+    { id: null as number | null, name: m.reward_text, name_ar: m.reward_text_ar, cost: m.reward_threshold },
+    ...rewards(db, m.id).map((r) => ({ id: r.id as number | null, name: r.name, name_ar: r.name_ar, cost: r.cost })),
+  ]
+  return all.map((r) => ({ ...r, affordable: card ? card.balance >= r.cost : false }))
+}
+
+/** Redeems a reward: the merchant's headline one (reward_threshold), or one from the menu by id. */
 export function redeem(
   db: DB, merchant: Merchant, serial: string,
-  opts: { staffId?: number | null; idempotencyKey?: string },
+  opts: { rewardId?: number | null; staffId?: number | null; idempotencyKey?: string },
 ): Movement {
   return tx(db, () => {
     const prior = existing(db, merchant.id, opts.idempotencyKey)
     if (prior) return replay(db, prior, serial)
     const card = merchantCard(db, merchant.id, serial)
-    if (card.balance < merchant.reward_threshold) {
-      throw new LoyaltyError(`Not enough yet: ${card.balance} of ${merchant.reward_threshold}`, 409)
+    let cost = merchant.reward_threshold
+    let rewardId: number | null = null
+    if (opts.rewardId != null && (opts.rewardId as unknown) !== '') {
+      const r = rewardById(db, merchant.id, Number(opts.rewardId))
+      if (r.archived_at != null) throw new LoyaltyError('That reward is no longer offered', 409)
+      cost = r.cost
+      rewardId = r.id
     }
-    const units = -merchant.reward_threshold
+    if (card.balance < cost) throw new LoyaltyError(`Not enough yet: ${card.balance} of ${cost}`, 409)
+    const units = -cost
     const now = Math.max(Date.now(), card.updated_at + 1)
     db.prepare(
-      `INSERT INTO ledger (merchant_id, card_id, kind, units, staff_id, idempotency_key, created_at)
-       VALUES (?, ?, 'redeem', ?, ?, ?, ?)`,
-    ).run(merchant.id, card.id, units, opts.staffId ?? null, opts.idempotencyKey ?? null, now)
+      `INSERT INTO ledger (merchant_id, card_id, kind, units, reward_id, staff_id, idempotency_key, created_at)
+       VALUES (?, ?, 'redeem', ?, ?, ?, ?, ?)`,
+    ).run(merchant.id, card.id, units, rewardId, opts.staffId ?? null, opts.idempotencyKey ?? null, now)
     db.prepare('UPDATE cards SET balance = balance + ?, rewards_redeemed = rewards_redeemed + 1, updated_at = ? WHERE id = ?').run(
       units, now, card.id,
     )
@@ -443,13 +531,18 @@ export interface HistoryRow {
   voided_at: number | null
   /** adjust: the reason; bonus: 'welcome' or 'referral'. */
   note: string | null
+  /** redeem: which reward from the menu; null with a redeem means the headline reward. */
+  reward: string | null
+  reward_ar: string | null
 }
 
 export function history(db: DB, card: Card, limit = 20): HistoryRow[] {
   return db
     .prepare(
-      `SELECT l.kind, l.units, l.amount_fils, l.created_at, c.name AS category, c.name_ar AS category_ar, l.voided_at, l.note
-       FROM ledger l LEFT JOIN categories c ON c.id = l.category_id WHERE l.card_id = ? ORDER BY l.id DESC LIMIT ?`,
+      `SELECT l.kind, l.units, l.amount_fils, l.created_at, c.name AS category, c.name_ar AS category_ar, l.voided_at, l.note,
+         r.name AS reward, r.name_ar AS reward_ar
+       FROM ledger l LEFT JOIN categories c ON c.id = l.category_id LEFT JOIN rewards r ON r.id = l.reward_id
+       WHERE l.card_id = ? ORDER BY l.id DESC LIMIT ?`,
     )
     .all(card.id, limit) as unknown as HistoryRow[]
 }
