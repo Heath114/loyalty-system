@@ -227,6 +227,7 @@ installs and scans but never updates (no HTTPS). Windows may ask to allow Node t
 npm run merchant -- create --slug test-cafe --name "Test Cafe" --name-ar "مقهى تجريبي" --program stamps \
     --threshold 3 --reward "Free coffee" --reward-ar "قهوة مجانية"
 npm run merchant -- staff-key --slug test-cafe --label "Test counter"
+npm run merchant -- admin --slug test-cafe --email you@example.com      # dashboard sign-in, shown once
 npm start
 ```
 
@@ -242,9 +243,10 @@ npm start
 | 6 | **Add a stamp** | Within about 10 seconds the iPhone shows a lock-screen message "Your card: 1 / 3" and the card reads `1 / 3` |
 | 7 | Add stamps up to 3 | Message says the reward is ready |
 | 8 | **Redeem reward** | Card back to `0 / 3` |
-| 9 | `npm run merchant -- promo --slug test-cafe --text "Test offer"` (the test card must have ticked offers) | Lock-screen message with the promotion text, between 10:00 and 21:00 Amman time |
+| 9 | Dashboard (`PUBLIC_URL/admin`) → Messages → Promotions → send now (the test card must have ticked offers) | Lock-screen message with the promotion text, between 10:00 and 21:00 Amman time |
 | 10 | Switch the iPhone to Arabic, remove and re-add the card | Card reads in Arabic |
 | 11 | Android (when 5 and 6 are done): same flow with **Add to Google Wallet** | Card in Google Wallet titled `[TEST ONLY]`, balance updates on step 6 |
+| 12 | Dashboard → Members → the test member → **Delete this member** (tap twice) | The card in Wallet turns void within seconds; scanning it at `/staff` says it is not one of our cards |
 
 **If the card refuses to install:** the reason only shows in the iPhone's system log. On a Mac:
 Console.app → the iPhone → filter `passd`. Without a Mac, note the exact Safari message and check
@@ -331,16 +333,23 @@ Not code. Each one is a paper, a picture or a decision.
   https://developers.google.com/wallet/retail/loyalty-cards/resources/brand-guidelines
 - **Privacy notice per merchant** (Jordan PDPL): who holds the data (the merchant), what is
   collected (name, optional phone, optional birthday as day and month, visits), why, how long, and
-  how to ask for deletion. Link it from the join page. [TBD: a deletion command; today it is a
-  manual database edit]
+  how to ask for deletion. Link it from the join page. Deletion itself is in the dashboard
+  (Members → the member → Delete this member): it wipes their details, voids the card in their
+  wallet and stops every message.
 - **Merchant agreement**, from the handbook's contract tool (`tools/render_contract.py`): price
   (study §7), who owns the customer data (recommended: the merchant), what happens to it if they
   leave, message rules they cannot override (1 a day, 4 in 30 days, 10:00 to 21:00).
 - **The merchant's artwork:** a square logo at least 660 by 660 (Google), a wide logo up to 480 by
-  150 (Apple, shown at 160 by 50), the card colours. Uploaded with `npm run merchant -- image`.
-- **Counter material:** print the counter QR, `PUBLIC_URL/m/<slug>/qr.svg`.
-- **Staff:** one staff key per counter device (`npm run merchant -- staff-key`). Show staff the
-  five-second flow: scan, add.
+  150 (Apple, shown at 160 by 50), an icon at least 87 by 87, the card colours. The merchant uploads
+  them in the dashboard (Card); each upload is checked for shape and size.
+- **Counter material:** print the poster (dashboard → Card → Print the poster, or
+  `PUBLIC_URL/m/<slug>/poster`): name, reward and join QR in Arabic and English, sized for A5.
+- **The merchant's dashboard sign-in:** `npm run merchant -- admin --slug <slug> --email <owner's email>`.
+  It prints a one-time password: hand it over in person or by phone, never in the same message as
+  the email address. They must choose their own at the first sign-in, and can add colleagues
+  themselves (Settings). A forgotten password: `npm run merchant -- admin-reset --email ...`.
+- **Staff:** one key per counter device, made in the dashboard (Staff → New key, shown once). Show
+  staff the five-second flow: scan, tap what was bought, add.
 - **First customer's terms** (study §7): founding price in writing, clearly temporary.
 
 ---
@@ -363,4 +372,5 @@ exist.
 | `certs/pass.pem` | Apple | the server | Not secret on its own; useless without the key |
 | Google service account JSON | step 5 | the server only | Delete that key in the Cloud console, make a new one |
 | `APP_SECRET` | `openssl rand -base64 32` | `.env` on the server | Changing it invalidates every card QR and card link: rotate only if it truly leaked |
-| Staff keys (`sk_...`) | CLI, shown once | the counter device's browser | Revoke it (today a database edit, `staff.revoked_at`); issue a new one |
+| Staff keys (`sk_...`) | dashboard or CLI, shown once | the counter device's browser | Remove it in the dashboard (Staff); make a new one |
+| Admin passwords | CLI (first one), then the dashboard; shown once | the merchant's head | `npm run merchant -- admin-reset`; every session of that admin ends |

@@ -246,15 +246,15 @@
   function tz() { return (S && S.merchant.timezone) || 'Asia/Amman' }
   function fmtNum(n) { return new Intl.NumberFormat(locale()).format(n || 0) }
   function fmtDate(ts) {
-    if (!ts) return '–'
+    if (!ts) return '-'
     return new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'short', year: 'numeric', timeZone: tz() }).format(new Date(ts))
   }
   function fmtDateTime(ts) {
-    if (!ts) return '–'
+    if (!ts) return '-'
     return new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz() }).format(new Date(ts))
   }
   function fmtJod(fils) { return new Intl.NumberFormat(locale(), { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format((fils || 0) / 1000) }
-  function pct(a, b) { return b ? Math.round((100 * a) / b) + '%' : '–' }
+  function pct(a, b) { return b ? Math.round((100 * a) / b) + '%' : '-' }
   function balanceText(n) {
     var m = S.merchant
     return m.program === 'stamps' ? Math.min(n, m.reward_threshold) + ' / ' + m.reward_threshold : fmtNum(n)
@@ -527,7 +527,7 @@
         countEl.textContent = t('membersCount', { n: fmtNum(r.total) })
         var rows = r.rows.map(function (x) {
           return h('tr', { class: 'click', tabindex: '0', onclick: function () { showMember(x.serial) }, onkeydown: function (e) { if (e.key === 'Enter') showMember(x.serial) } },
-            td(x.member_name), td(h('span', { dir: 'ltr' }, x.member_phone || '–')), td(balanceText(x.balance), true), td(fmtNum(x.visits), true),
+            td(x.member_name), td(h('span', { dir: 'ltr' }, x.member_phone || '-')), td(balanceText(x.balance), true), td(fmtNum(x.visits), true),
             td(fmtDate(x.last_visit), true), h('td', { class: 'num hide-sm' }, fmtDate(x.created_at)))
         })
         if (!more) {
@@ -560,14 +560,14 @@
             h('button', { type: 'button', class: 'secondary small', onclick: function () { detail.replaceChildren() } }, t('close'))),
           h('dl', { class: 'facts' },
             h('dt', null, t('cardNo')), h('dd', null, h('span', { dir: 'ltr' }, x.serial.match(/.{4}/g).join(' '))),
-            h('dt', null, t('phone')), h('dd', null, h('span', { dir: 'ltr' }, x.member_phone || '–')),
-            h('dt', null, t('email')), h('dd', null, h('span', { dir: 'ltr' }, x.member_email || '–')),
-            h('dt', null, t('birthday')), h('dd', null, x.birthday || '–'),
+            h('dt', null, t('phone')), h('dd', null, h('span', { dir: 'ltr' }, x.member_phone || '-')),
+            h('dt', null, t('email')), h('dd', null, h('span', { dir: 'ltr' }, x.member_email || '-')),
+            h('dt', null, t('birthday')), h('dd', null, x.birthday || '-'),
             h('dt', null, t('offers')), h('dd', null, x.marketing_consent ? t('yes') : t('no')),
             h('dt', null, t('language')), h('dd', null, x.lang === 'ar' ? t('arabic') : t('english')),
             h('dt', null, t('balance')), h('dd', null, balanceText(x.balance)),
             h('dt', null, t('joined')), h('dd', null, fmtDate(x.created_at)),
-            h('dt', null, t('inWallet')), h('dd', null, [x.in_apple ? 'Apple' : null, x.in_google ? 'Google' : null].filter(Boolean).join(', ') || '–')),
+            h('dt', null, t('inWallet')), h('dd', null, [x.in_apple ? 'Apple' : null, x.in_google ? 'Google' : null].filter(Boolean).join(', ') || '-')),
           h('h3', null, t('history')),
           lines.length ? table(['', '', t('units'), t('amount')], lines, [2, 3]) : h('p', { class: 'empty' }, t('none')),
           h('h3', null, t('messagesSent')),

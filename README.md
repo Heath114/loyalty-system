@@ -26,6 +26,8 @@ The loyalty base, end to end:
 - **Retention messages** (`src/messages.ts`), sent by the server's scheduler every few minutes:
   - **Birthday:** on the member's birthday (day and month only, optional at joining).
   - **Win-back:** after N days without a visit, once per absence.
+  - **Reminders after a purchase:** N days after a member's latest purchase in a category ("your
+    warranty ends next month" 335 days after a phone, "time for your colour" after 42 days).
   - **Promotions:** a one-off offer to every member who ticked "send me offers", now or at a set time.
   - **Near the shop:** each branch's location is on the card. Apple offers the card on the lock screen
     nearby (best effort, Apple decides); Google sends a notification nearby to customers who allow
@@ -35,35 +37,48 @@ The loyalty base, end to end:
   Google it is a card message with a notification. `{name}` in a message becomes the member's first
   name.
 - **Message rules the merchant cannot override:** at most 1 message a day and 4 in 30 days per card,
-  only between 10:00 and 21:00 in the merchant's time zone, offers and win-back only to members who
-  agreed to them, and every message sent once (the database enforces it). These protect our Apple and
+  only between 10:00 and 21:00 in the merchant's time zone, offers, win-back and reminders only to
+  members who agreed to them, and every message sent once (the database enforces it). These protect our Apple and
   Google accounts: one merchant spamming could get every merchant restricted (`docs/STUDY.md` §9).
 - **Many merchants from day one:** every card, ledger row, message and staff key belongs to a
   merchant, and every query is scoped by it. One merchant's staff cannot see another merchant's customers.
 - **Stamps or points** per merchant: one stamp a visit, or N points per JOD, reward at a threshold.
   The balance is a cache of an append-only ledger.
+- **Categories:** what was bought, each earning its own way: points per JOD, or a set number per
+  purchase whatever it cost (a phone store's thank-you for a device, where points on the full price
+  would give away the margin). Staff pick one with a tap; reminders and reports hang off them.
+- **The merchant dashboard** (`/admin`, English and Arabic): an overview of members, visits, repeat
+  and returning visitors, rewards, spending per category, which messages brought people back, and
+  which counter device records visits; members (search, details, CSV download, deletion on request);
+  every message; earning and categories; the card's names, colours, pictures and a printable counter
+  poster; branches; counter device keys; and who else can sign in.
+- **Deleting a member on request** (Jordan PDPL): their details are wiped, their card shows as void
+  in their wallet and stops working, and their visits stay in the numbers without a name.
 - **NFC-ready:** the QR payload is signed and short enough for an NFC pass. Setting one variable
   switches NFC on once Apple grants the entitlement (`docs/APPLE_SETUP.md` §6).
 
-Not built yet: the merchant dashboard (merchants, messages and branches are set up from the command
-line for now), date-based reminders on a purchase (warranty ending, `docs/STUDY.md` §3), earn rates
-per category, and reporting.
+Not built yet: creating a merchant from the dashboard (we create each merchant and its first sign-in
+from the command line, on purpose: it is our step, with a contract behind it), password reset by
+email (we reset from the command line), SMS or WhatsApp, and NFC (waits on Apple, `docs/APPLE_SETUP.md` §6).
+Nothing has run on a real phone yet: [`docs/MANUAL_STEPS.md`](docs/MANUAL_STEPS.md) is what stands
+between this code and the first customer.
 
 ## Running it
 
 ```sh
 npm install
-npm test                 # 39 tests: ledger, signing (verified with openssl), Wallet web service, staff API,
-                         # messages and their caps, Google Wallet against an in-memory fake of its API
+npm test                 # 67 tests: ledger, categories, signing (verified with openssl), Wallet web service,
+                         # staff API, messages, reminders and their caps, reports, deletion, the dashboard API,
+                         # Google Wallet against an in-memory fake of its API
 npm run dev-certs        # stand-in certificates: passes build, an iPhone will not accept them
 cp .env.example .env     # use the "Local development" values at the bottom
 npm run merchant -- create --slug cafe --name "Cafe" --program stamps --threshold 10 --reward "Free coffee"
-npm run merchant -- staff-key --slug cafe --label "Counter 1"
-npm run dev              # http://localhost:8787/m/cafe and /staff
+npm run merchant -- admin --slug cafe --email you@example.com    # dashboard sign-in, password shown once
+npm run dev              # http://localhost:8787/admin, /m/cafe and /staff
 ```
 
-Messages and branches, from the command line until the dashboard exists (full list at the top of
-`scripts/merchant.ts`):
+Everything else is in the dashboard. The same things from the command line, for us (full list at
+the top of `scripts/merchant.ts`):
 
 ```sh
 npm run merchant -- trigger --slug cafe --kind birthday --text "Happy birthday {name}! Your coffee is on us today." \
@@ -71,6 +86,10 @@ npm run merchant -- trigger --slug cafe --kind birthday --text "Happy birthday {
 npm run merchant -- trigger --slug cafe --kind winback --days 30 --text "We miss you, {name}. 20% off this week."
 npm run merchant -- promo --slug cafe --text "Two for one on Friday" --at "2026-10-23 10:00"
 npm run merchant -- location --slug cafe --label "Abdoun" --lat 31.9539 --lng 35.8836
+npm run merchant -- category --slug cafe --name "Colour" --fixed 1
+npm run merchant -- reminder --slug cafe --category 1 --days 42 --text "Time for your colour, {name}?"
+npm run merchant -- staff-key --slug cafe --label "Counter 1"
+npm run merchant -- admin-reset --email you@example.com          # a forgotten password
 npm run merchant -- show --slug cafe
 ```
 
@@ -82,8 +101,10 @@ certificate, Apple's WWDR certificate, and an HTTPS host. For Android, follow
 
 | Path | What it is |
 |---|---|
-| `src/loyalty.ts` | Merchants, enrolment, earn, redeem, branches. All the card rules. |
-| `src/messages.ts` | Birthday, win-back and promotion messages: what is due, the caps, sending hours. |
+| `src/loyalty.ts` | Merchants, enrolment, categories, earn, redeem, branches, member deletion. All the card rules. |
+| `src/messages.ts` | Birthday, win-back, reminder and promotion messages: what is due, the caps, sending hours. |
+| `src/reports.ts` | What the dashboard shows: the period report, message results, members, the CSV. |
+| `src/admin.ts` | Dashboard sign-in and sessions, admins, merchant settings, images, staff keys. |
 | `src/scheduler.ts` | The background run: refresh cards after a merchant change, send due messages. |
 | `src/notify.ts` | Delivery of updates and messages to both wallets. |
 | `src/db.ts` | SQLite schema and its migrations (Node's built-in `node:sqlite`). |
@@ -91,8 +112,9 @@ certificate, Apple's WWDR certificate, and an HTTPS host. For Android, follow
 | `src/google.ts` | Google Wallet: class per merchant, object per card, messages, signed save links. |
 | `src/routes/wallet.ts` | Apple's PassKit web service: device registration, updates, latest pass. |
 | `src/apns.ts` | Push to Wallet over HTTP/2 with the pass certificate. |
-| `src/routes/public.ts` | Join page, customer card page, `.pkpass` download, Google save, counter QR, logo. |
+| `src/routes/public.ts` | Join page, customer card page, `.pkpass` download, Google save, counter QR and poster, logo. |
 | `src/routes/staff.ts` | Staff scanner page and its API. |
+| `src/routes/admin.ts` | The dashboard page and its API; `admin.client.js` and `admin.css` are the page itself. |
 | `scripts/` | Merchant setup CLI, dev certificates. |
 
 ## Documents
