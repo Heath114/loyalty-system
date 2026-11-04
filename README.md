@@ -97,6 +97,9 @@ certificate, Apple's WWDR certificate, and an HTTPS host. For Android, follow
 
 ## Documents
 
+- [`docs/MANUAL_STEPS.md`](docs/MANUAL_STEPS.md): **start here before going live.** Every step that
+  needs a person (Apple and Google accounts, certificates, hosting, the real-phone test, papers),
+  who does it, what it must produce, how to check it, and where each one stands.
 - [`docs/STUDY.md`](docs/STUDY.md): the feasibility and practicality study. What the product is,
   costs, pricing, and the 12 questions that decide scope and timing (section 8).
   Imported from `The-Office-Development/the-office-handbook` `products/loyalty/STUDY.md` at `9929b7e`.

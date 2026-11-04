@@ -8,13 +8,15 @@ Team: `LZ8RFD29KM` (the Apple developer account already paid for UniDash, per `d
 ## 1. Register a Pass Type ID
 
 developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → **+** → **Pass Type IDs**.
-Identifier, reverse-DNS: e.g. `pass.<domain>.loyalty`. [TBD: product name and domain, study §8
-smaller decision 4]. One Pass Type ID serves every merchant: each card carries its own merchant name,
-colours and logo.
+Identifier: **`pass.com.theoffice.loyalty`** (chosen 2026-11-04). Customers never see it, so it does
+not wait for the product name, but it cannot be renamed once cards exist. One Pass Type ID serves
+every merchant: each card carries its own merchant name, colours and logo. The step by step, with
+who does it and how to check the result, is in [`MANUAL_STEPS.md`](MANUAL_STEPS.md) §2.
 
 ## 2. Create its certificate
 
-On the Pass Type ID → **Create Certificate**. Apple asks for a CSR:
+On the Pass Type ID → **Create Certificate**. Apple asks for a CSR. One already exists (2026-11-04,
+`certs/pass.csr` on Malek's PC, made from `certs/pass.key`); to make a new one:
 
 ```sh
 openssl req -new -newkey rsa:2048 -nodes -keyout certs/pass.key -out certs/pass.csr -subj "/CN=loyalty pass"
