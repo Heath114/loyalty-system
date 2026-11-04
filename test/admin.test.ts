@@ -210,13 +210,13 @@ test('coordinates: typed, or taken from a Google Maps link', () => {
   assert.throws(() => parseLatLng('95, 35'))
 })
 
-test('pages: dashboard and poster render; every response refuses framing and keeps referrers in', async () => {
+test('pages: dashboard and poster render; every response refuses framing and never leaks a path in the Referer', async () => {
   const { app } = setup()
   const page = await app.request('/admin')
   assert.equal(page.status, 200)
   assert.match(await page.text(), /Loyalty dashboard/)
   assert.equal(page.headers.get('X-Frame-Options'), 'DENY')
-  assert.equal(page.headers.get('Referrer-Policy'), 'same-origin')
+  assert.equal(page.headers.get('Referrer-Policy'), 'strict-origin-when-cross-origin')
   const poster = await app.request('/m/cafe/poster')
   assert.equal(poster.status, 200)
   const html = await poster.text()

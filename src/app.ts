@@ -25,13 +25,13 @@ export function createApp(deps: Deps) {
     console.error(err)
     return c.json({ error: 'Something went wrong' }, 500)
   })
-  // No framing (the staff and dashboard pages hold keys), and card links, which carry a token, never
-  // leak in a Referer to another site.
+  // No framing (the staff and dashboard pages hold keys). Other sites get our origin at most, never a
+  // path: card links carry a token, and Google's save page may check where the customer came from.
   app.use('*', async (c, next) => {
     await next()
     c.header('X-Frame-Options', 'DENY')
     c.header('X-Content-Type-Options', 'nosniff')
-    c.header('Referrer-Policy', 'same-origin')
+    c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
   })
   app.get('/health', (c) => c.json({ ok: true }))
   app.route('/wallet', walletRoutes(deps))
