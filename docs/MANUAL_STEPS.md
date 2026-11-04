@@ -246,7 +246,9 @@ npm start
 | 9 | Dashboard (`PUBLIC_URL/admin`) → Messages → Promotions → send now (the test card must have ticked offers) | Lock-screen message with the promotion text, between 10:00 and 21:00 Amman time |
 | 10 | Switch the iPhone to Arabic, remove and re-add the card | Card reads in Arabic |
 | 11 | Android (when 5 and 6 are done): same flow with **Add to Google Wallet** | Card in Google Wallet titled `[TEST ONLY]`, balance updates on step 6 |
-| 12 | Dashboard → Members → the test member → **Delete this member** (tap twice) | The card in Wallet turns void within seconds; scanning it at `/staff` says it is not one of our cards |
+| 12 | At `/staff`, add a stamp, then **Undo my last entry** | The card goes back within seconds; after 10 minutes undo is refused |
+| 13 | Dashboard → Earning → Gifts: friend bonus 1. Open your card page, share the invite link to a second phone, join with it, add a stamp to the new card, wait 15 minutes | Both cards get the bonus and update in Wallet |
+| 14 | Card page → **Delete my card** (or Dashboard → Members → **Delete this member**) | The card in Wallet turns void within seconds; scanning it at `/staff` says it is not one of our cards |
 
 **If the card refuses to install:** the reason only shows in the iPhone's system log. On a Mac:
 Console.app → the iPhone → filter `passd`. Without a Mac, note the exact Safari message and check
@@ -331,11 +333,14 @@ Not code. Each one is a paper, a picture or a decision.
   badge and Google's **Add to Google Wallet** button, unmodified, in both languages.
   https://developer.apple.com/wallet/add-to-apple-wallet-guidelines/ and
   https://developers.google.com/wallet/retail/loyalty-cards/resources/brand-guidelines
-- **Privacy notice per merchant** (Jordan PDPL): who holds the data (the merchant), what is
-  collected (name, optional phone, optional birthday as day and month, visits), why, how long, and
-  how to ask for deletion. Link it from the join page. Deletion itself is in the dashboard
-  (Members → the member → Delete this member): it wipes their details, voids the card in their
-  wallet and stops every message.
+- **Privacy notice per merchant** (Jordan PDPL): the system already serves one at
+  `PUBLIC_URL/m/<slug>/privacy`, linked from the join page, in Arabic and English: who is
+  responsible (the merchant), what is collected, why, who sees it, how long, and the member's rights.
+  It is a plain template. **Before the first customer:** the merchant fills in their contact details
+  (dashboard → Settings → How customers reach you), and **a lawyer reads the notice** in both
+  languages; it may need to name us as the provider, or a different retention period. Wording changes
+  go in `src/routes/customer-copy.ts`. Deletion works from both sides: the member from their card
+  page (Delete my card), or the merchant (Members → the member → Delete this member).
 - **Merchant agreement**, from the handbook's contract tool (`tools/render_contract.py`): price
   (study §7), who owns the customer data (recommended: the merchant), what happens to it if they
   leave, message rules they cannot override (1 a day, 4 in 30 days, 10:00 to 21:00).

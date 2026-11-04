@@ -47,13 +47,28 @@ The loyalty base, end to end:
 - **Categories:** what was bought, each earning its own way: points per JOD, or a set number per
   purchase whatever it cost (a phone store's thank-you for a device, where points on the full price
   would give away the margin). Staff pick one with a tap; reminders and reports hang off them.
+- **A menu of rewards:** besides the reward the card counts towards, more at other prices ("200
+  points: a case, 1500: earbuds"). Staff see the ones a card can afford; the card lists them all.
+- **Welcome gift and "bring a friend":** stamps or points on joining, and an invite link on every
+  card: after the friend's first purchase both get a bonus (paid once the purchase is past the undo
+  window, at most 10 friends a month per member).
+- **Bonus periods:** "double points this weekend", on everything or one category, planned ahead.
+- **Mistakes are cheap:** staff undo their own last entry within 10 minutes; the merchant adds or
+  takes away by hand with a reason. Nothing is ever deleted from the ledger.
 - **The merchant dashboard** (`/admin`, English and Arabic): an overview of members, visits, repeat
   and returning visitors, rewards, spending per category, which messages brought people back, and
   which counter device records visits; members (search, details, CSV download, deletion on request);
-  every message; earning and categories; the card's names, colours, pictures and a printable counter
-  poster; branches; counter device keys; and who else can sign in.
-- **Deleting a member on request** (Jordan PDPL): their details are wiped, their card shows as void
-  in their wallet and stops working, and their visits stay in the numbers without a name.
+  every message; earning, categories, the reward menu, gifts and bonus periods; the card's names,
+  colours, pictures and a printable counter poster; branches; counter device keys; contact details;
+  and who else can sign in.
+- **The staff page and the customer's pages in Arabic and English**, following the phone's language
+  with a switch. The customer's card page shows their balance, the reward menu, a running bonus
+  period, their invite link, their history, and lets them stop offers or delete their card.
+- **A privacy notice per merchant** (`/m/<slug>/privacy`), linked from the join page: a plain
+  template with the merchant's contact details, for the merchant's lawyer to read before going live.
+- **Deleting a member** (Jordan PDPL), by the member from their card page or by the merchant: their
+  details are wiped, their card shows as void in their wallet and stops working, and their visits
+  stay in the numbers without a name.
 - **NFC-ready:** the QR payload is signed and short enough for an NFC pass. Setting one variable
   switches NFC on once Apple grants the entitlement (`docs/APPLE_SETUP.md` §6).
 
@@ -67,9 +82,10 @@ between this code and the first customer.
 
 ```sh
 npm install
-npm test                 # 67 tests: ledger, categories, signing (verified with openssl), Wallet web service,
-                         # staff API, messages, reminders and their caps, reports, deletion, the dashboard API,
-                         # Google Wallet against an in-memory fake of its API
+npm test                 # 89 tests: ledger, categories, undo and adjustments, the reward menu, gifts and
+                         # referrals, bonus periods, signing (verified with openssl), Wallet web service, staff
+                         # API, messages, reminders and their caps, reports, deletion, the customer pages, the
+                         # dashboard API, Google Wallet against an in-memory fake of its API
 npm run dev-certs        # stand-in certificates: passes build, an iPhone will not accept them
 cp .env.example .env     # use the "Local development" values at the bottom
 npm run merchant -- create --slug cafe --name "Cafe" --program stamps --threshold 10 --reward "Free coffee"
@@ -104,6 +120,7 @@ certificate, Apple's WWDR certificate, and an HTTPS host. For Android, follow
 | `src/loyalty.ts` | Merchants, enrolment, categories, earn, redeem, branches, member deletion. All the card rules. |
 | `src/messages.ts` | Birthday, win-back, reminder and promotion messages: what is due, the caps, sending hours. |
 | `src/reports.ts` | What the dashboard shows: the period report, message results, members, the CSV. |
+| `src/referrals.ts` | "Bring a friend": invite links, paying referral bonuses, referral numbers. |
 | `src/admin.ts` | Dashboard sign-in and sessions, admins, merchant settings, images, staff keys. |
 | `src/scheduler.ts` | The background run: refresh cards after a merchant change, send due messages. |
 | `src/notify.ts` | Delivery of updates and messages to both wallets. |
@@ -112,7 +129,8 @@ certificate, Apple's WWDR certificate, and an HTTPS host. For Android, follow
 | `src/google.ts` | Google Wallet: class per merchant, object per card, messages, signed save links. |
 | `src/routes/wallet.ts` | Apple's PassKit web service: device registration, updates, latest pass. |
 | `src/apns.ts` | Push to Wallet over HTTP/2 with the pass certificate. |
-| `src/routes/public.ts` | Join page, customer card page, `.pkpass` download, Google save, counter QR and poster, logo. |
+| `src/routes/public.ts` | Join, card, privacy and delete pages, `.pkpass` download, Google save, counter QR and poster, logo. |
+| `src/routes/customer-copy.ts` | Every word on the customer's pages, in English and Arabic, and the privacy notice. |
 | `src/routes/staff.ts` | Staff scanner page and its API. |
 | `src/routes/admin.ts` | The dashboard page and its API; `admin.client.js` and `admin.css` are the page itself. |
 | `scripts/` | Merchant setup CLI, dev certificates. |
