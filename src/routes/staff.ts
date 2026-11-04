@@ -74,29 +74,32 @@ export function staffRoutes(deps: Deps) {
       page(
         'Staff',
         raw(`
+          <div class="topbar"><button id="lang" type="button" class="btn secondary small">العربية</button></div>
           <div id="login">
-            <h1>Staff</h1>
-            <p class="muted">Paste the staff key you were given. This phone remembers it.</p>
-            <div class="card"><label for="key">Staff key</label><input id="key" autocomplete="off"><button id="save">Continue</button><p id="loginErr" class="err"></p></div>
+            <h1 data-t="staff">Staff</h1>
+            <p class="muted" data-t="pasteKey"></p>
+            <div class="card"><label for="key" data-t="staffKey"></label><input id="key" autocomplete="off" dir="ltr"><button id="save" data-t="continue"></button><p id="loginErr" class="err" role="alert"></p></div>
           </div>
           <div id="app" hidden>
             <p class="muted" id="merchantName"></p>
-            <h1>Scan a card</h1>
+            <h1 data-t="scan"></h1>
+            <div id="boost" class="banner" role="status" hidden></div>
             <div class="card" style="padding:0;overflow:hidden"><video id="video" playsinline muted style="width:100%;display:block;background:#000;min-height:220px"></video></div>
-            <label for="manual">Or type the card number</label>
-            <input id="manual" placeholder="ABCD EFGH JKMN PQRS" autocapitalize="characters">
-            <button id="lookup" class="btn secondary">Find card</button>
+            <label for="manual" data-t="typeNumber"></label>
+            <input id="manual" placeholder="ABCD EFGH JKMN PQRS" autocapitalize="characters" dir="ltr">
+            <button id="lookup" class="btn secondary" data-t="find"></button>
             <div id="result" class="card" hidden>
               <p class="muted" id="rName"></p>
               <p class="big" id="rBalance"></p>
               <p id="rReward"></p>
-              <div id="catRow" hidden><label>What was bought</label><div id="cats" class="chips"></div></div>
-              <div id="amountRow" hidden><label for="amount" id="amountLabel">Purchase amount (JOD)</label><input id="amount" type="number" inputmode="decimal" step="0.001" min="0"></div>
-              <button id="earn">Add</button>
-              <button id="redeem" class="btn secondary" hidden>Redeem reward</button>
-              <p id="msg"></p>
+              <div id="catRow" hidden><label data-t="whatBought"></label><div id="cats" class="chips"></div></div>
+              <div id="amountRow" hidden><label for="amount" id="amountLabel"></label><input id="amount" type="number" inputmode="decimal" step="0.001" min="0" dir="ltr"></div>
+              <button id="earn"></button>
+              <div id="rewardsRow" hidden><label data-t="giveReward"></label><div id="rewards" class="stack"></div></div>
+              <button id="undo" class="btn secondary" data-t="undo" hidden></button>
+              <p id="msg" role="status"></p>
             </div>
-            <button id="logout" class="btn secondary">Sign out of this phone</button>
+            <button id="logout" class="btn secondary" data-t="signOut"></button>
           </div>
           <script>${jsQR}</script>
           <script>${STAFF_JS}</script>`),

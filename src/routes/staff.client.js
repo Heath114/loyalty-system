@@ -1,15 +1,73 @@
 // Staff scanner, runs in the browser. Camera frames go through jsQR; no app to install.
+// Arabic or English (the phone's language, switchable); the last choice is remembered on the device.
 ;(function () {
   var $ = function (id) { return document.getElementById(id) }
   var KEY = 'loyalty.staffKey'
-  var key = null
-  try { key = localStorage.getItem(KEY) } catch (e) {}
+  var LANG = 'loyalty.staffLang'
+  function load(k) { try { return localStorage.getItem(k) } catch (e) { return null } }
+  function save(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v) } catch (e) {} }
+  var key = load(KEY)
+  var lang = load(LANG) || (/^ar\b/i.test(navigator.language || '') ? 'ar' : 'en')
   var merchant = null
   var cats = []
   var cat = null
   var current = null
+  var canUndo = false
   var scanning = false
   var lastCode = ''
+
+  var T = {
+    en: {
+      staff: 'Staff', pasteKey: 'Paste the staff key you were given. This phone remembers it.', staffKey: 'Staff key', continue: 'Continue',
+      scan: 'Scan a card', typeNumber: 'Or type the card number', find: 'Find card', whatBought: 'What was bought',
+      amount: 'Purchase amount (JOD)', amountOptional: 'Purchase amount (JOD, optional)', addStamp: 'Add a stamp', addPoints: 'Add points',
+      giveReward: 'Give a reward', tapAgain: 'Tap again to give: ', undo: 'Undo my last entry', signOut: 'Sign out of this phone',
+      stamps: 'stamps', points: 'points', ready: 'Reward ready ({n}): {r}', rewardAt: 'Reward at {t}: {r}',
+      added: '+{n} {u} added', recorded: 'Purchase recorded', given: 'Reward given: {r}', undone: 'Taken back: {what}', stamp: 'stamp', theReward: 'the reward',
+      boostNow: '×{x} now: {l}', noCamera: 'Camera not available. Type the card number below.', badKey: 'That key is not recognised.',
+      lang: 'العربية',
+      errors: {
+        'Pick what was bought': 'Pick what was bought', 'Enter the purchase amount': 'Enter the purchase amount',
+      },
+    },
+    ar: {
+      staff: 'الموظفون', pasteKey: 'الصق مفتاح الموظف الذي استلمته. سيتذكره هذا الهاتف.', staffKey: 'مفتاح الموظف', continue: 'متابعة',
+      scan: 'امسح بطاقة', typeNumber: 'أو اكتب رقم البطاقة', find: 'ابحث عن البطاقة', whatBought: 'ما الذي تم شراؤه',
+      amount: 'قيمة الشراء (د.أ)', amountOptional: 'قيمة الشراء (د.أ، اختياري)', addStamp: 'أضف طابعًا', addPoints: 'أضف النقاط',
+      giveReward: 'امنح مكافأة', tapAgain: 'اضغط مرة أخرى لمنح: ', undo: 'تراجع عن آخر إدخال لي', signOut: 'تسجيل الخروج من هذا الهاتف',
+      stamps: 'طوابع', points: 'نقطة', ready: 'المكافأة جاهزة ({n}): {r}', rewardAt: 'المكافأة عند {t}: {r}',
+      added: 'أُضيف {n} {u}', recorded: 'سُجّلت عملية الشراء', given: 'مُنحت المكافأة: {r}', undone: 'تم التراجع عن: {what}', stamp: 'طابع', theReward: 'المكافأة',
+      boostNow: '×{x} الآن: {l}', noCamera: 'الكاميرا غير متاحة. اكتب رقم البطاقة في الأسفل.', badKey: 'هذا المفتاح غير معروف.',
+      lang: 'English',
+      errors: {
+        'Pick what was bought': 'اختر ما تم شراؤه', 'Enter the purchase amount': 'أدخل قيمة الشراء', 'Check the purchase amount': 'تحقق من قيمة الشراء',
+        'That is not one of our cards': 'هذه ليست إحدى بطاقاتنا', 'Card not found': 'لم يُعثر على البطاقة', 'Not enough yet': 'الرصيد لا يكفي بعد',
+        'Nothing to undo': 'لا يوجد ما يمكن التراجع عنه: آخر إدخال لك على هذه البطاقة خلال 10 دقائق فقط',
+        'That reward is no longer offered': 'هذه المكافأة لم تعد متاحة', 'That category is no longer used': 'هذه الفئة لم تعد مستخدمة',
+        'Staff key not recognised': 'مفتاح الموظف غير معروف',
+      },
+    },
+  }
+  function t(k, vars) {
+    var s = T[lang][k] != null ? T[lang][k] : T.en[k]
+    if (vars) Object.keys(vars).forEach(function (v) { s = s.split('{' + v + '}').join(String(vars[v])) })
+    return s
+  }
+  /** Server messages are English; the common ones read in Arabic too. */
+  function tErr(message) {
+    var m = String(message || '')
+    var table = T[lang].errors
+    for (var k in table) if (m.indexOf(k) === 0) return table[k]
+    return m
+  }
+
+  function apply() {
+    document.documentElement.lang = lang
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
+    document.querySelectorAll('[data-t]').forEach(function (el) { el.textContent = t(el.getAttribute('data-t')) })
+    $('lang').textContent = t('lang')
+    if (current) show(current)
+  }
 
   function api(path, body) {
     return fetch('/api/staff/' + path, {
@@ -27,6 +85,7 @@
   function requestId() {
     return (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random()
   }
+  function name(x, en, ar) { return lang === 'ar' && x[ar] ? x[ar] : x[en] }
 
   // What was bought: one tap. A single category is picked for staff; with several, every purchase
   // needs one, chosen again each time so the last customer's category never carries over.
@@ -39,8 +98,7 @@
       var b = document.createElement('button')
       b.type = 'button'
       b.className = 'chip'
-      b.textContent = c.name
-      if (c.name_ar) b.title = c.name_ar
+      b.textContent = name(c, 'name', 'name_ar')
       b.setAttribute('aria-pressed', cat && cat.id === c.id ? 'true' : 'false')
       b.onclick = function () { cat = c; renderCats(); amountRow() }
       box.appendChild(b)
@@ -55,38 +113,81 @@
   function amountRow() {
     if (!current) return
     $('amountRow').hidden = current.program !== 'points'
-    $('amountLabel').textContent = amountNeeded() ? 'Purchase amount (JOD)' : 'Purchase amount (JOD, optional)'
+    $('amountLabel').textContent = amountNeeded() ? t('amount') : t('amountOptional')
+  }
+
+  /** Rewards the card can have now. Giving one takes two taps, never a browser dialog. */
+  function renderRewards(card) {
+    var box = $('rewards')
+    box.textContent = ''
+    var affordable = (card.menu || []).filter(function (r) { return r.affordable })
+    $('rewardsRow').hidden = affordable.length === 0
+    affordable.forEach(function (r) {
+      var label = name(r, 'name', 'name_ar') + ' (' + r.cost + ')'
+      var b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'btn secondary'
+      b.textContent = label
+      var timer = null
+      b.onclick = function () {
+        if (!b.classList.contains('armed')) {
+          b.classList.add('armed')
+          b.textContent = t('tapAgain') + name(r, 'name', 'name_ar')
+          timer = setTimeout(function () { b.classList.remove('armed'); b.textContent = label }, 4000)
+          return
+        }
+        clearTimeout(timer)
+        busy(b, api('redeem', { serial: card.serial, rewardId: r.id, requestId: requestId() }).then(function (res) {
+          canUndo = true
+          show(res.card, t('given', { r: name(r, 'name', 'name_ar') }), true)
+        }).catch(fail))
+      }
+      box.appendChild(b)
+    })
+  }
+
+  function renderBoosts(card) {
+    var list = card.boosts || []
+    $('boost').hidden = list.length === 0
+    $('boost').textContent = list.map(function (b) {
+      var c = b.category_id ? cats.filter(function (x) { return x.id === b.category_id })[0] : null
+      return t('boostNow', { x: b.multiplier, l: name(b, 'label', 'label_ar') + (c ? ' (' + name(c, 'name', 'name_ar') + ')' : '') })
+    }).join(' · ')
   }
 
   function show(card, note, ok) {
     current = card
     $('result').hidden = false
     $('rName').textContent = card.name
+    var reward = lang === 'ar' && card.rewardTextAr ? card.rewardTextAr : card.rewardText
     $('rBalance').textContent = card.program === 'stamps'
-      ? Math.min(card.balance, card.threshold) + ' / ' + card.threshold + ' stamps'
-      : card.balance + ' points'
-    $('rReward').textContent = card.rewardsAvailable > 0
-      ? 'Reward ready (' + card.rewardsAvailable + '): ' + card.rewardText
-      : 'Reward at ' + card.threshold + ': ' + card.rewardText
+      ? Math.min(card.balance, card.threshold) + ' / ' + card.threshold + ' ' + t('stamps')
+      : card.balance + ' ' + t('points')
+    $('rReward').textContent = card.rewardsAvailable > 0 ? t('ready', { n: card.rewardsAvailable, r: reward }) : t('rewardAt', { t: card.threshold, r: reward })
     amountRow()
-    $('earn').textContent = card.program === 'stamps' ? 'Add a stamp' : 'Add points'
-    $('redeem').hidden = card.rewardsAvailable < 1
-    $('msg').textContent = note || ''
-    $('msg').className = ok ? 'ok' : note ? 'err' : ''
+    $('earn').textContent = card.program === 'stamps' ? t('addStamp') : t('addPoints')
+    renderRewards(card)
+    renderBoosts(card)
+    $('undo').hidden = !canUndo
+    if (note !== undefined) {
+      $('msg').textContent = note || ''
+      $('msg').className = ok ? 'ok' : note ? 'err' : ''
+    }
   }
 
   function fail(e) {
     if (e.status === 401) return logout()
     $('result').hidden = false
-    $('msg').textContent = e.message
+    $('msg').textContent = tErr(e.message)
     $('msg').className = 'err'
   }
 
   function lookup(code) {
     api('lookup', { code: code }).then(function (r) {
       if (cats.length > 1) cat = null
+      if (!current || current.serial !== r.card.serial) canUndo = false
       renderCats()
-      show(r.card)
+      show(r.card, '')
     }).catch(fail)
   }
 
@@ -110,17 +211,22 @@
     busy($('earn'), api('earn', body).then(function (r) {
       $('amount').value = ''
       if (cats.length > 1) cat = null
+      canUndo = true
       renderCats()
-      var unit = r.card.program === 'stamps' ? (r.units === 1 ? ' stamp' : ' stamps') : ' points'
-      show(r.card, r.units === 0 ? 'Purchase recorded' : '+' + r.units + unit + ' added', true)
+      var unit = r.card.program === 'stamps' ? (r.units === 1 ? t('stamp') : t('stamps')) : t('points')
+      show(r.card, r.units === 0 ? t('recorded') : t('added', { n: r.units, u: unit }), true)
     }).catch(fail))
   }
 
-  $('redeem').onclick = function () {
-    if (!current || !confirm('Give the reward now: ' + current.rewardText + '?')) return
-    busy($('redeem'), api('redeem', { serial: current.serial, requestId: requestId() }).then(function (r) {
-      show(r.card, 'Reward given', true)
-    }).catch(fail))
+  $('undo').onclick = function () {
+    if (!current) return
+    busy($('undo'), api('undo', { serial: current.serial, requestId: requestId() }).then(function (r) {
+      canUndo = false
+      var u = r.undone
+      var unit = r.card.program === 'stamps' ? (u.units === 1 ? t('stamp') : t('stamps')) : t('points')
+      var what = u.kind === 'earn' ? '+' + u.units + ' ' + unit : t('theReward')
+      show(r.card, t('undone', { what: what }), true)
+    }).catch(function (e) { canUndo = false; $('undo').hidden = true; fail(e) }))
   }
 
   $('lookup').onclick = function () { lookup($('manual').value) }
@@ -152,7 +258,7 @@
       })()
     }).catch(function () {
       $('video').replaceWith(Object.assign(document.createElement('p'), {
-        className: 'muted', style: 'padding:16px', textContent: 'Camera not available. Type the card number below.',
+        className: 'muted', style: 'padding:16px', textContent: t('noCamera'),
       }))
     })
   }
@@ -167,22 +273,29 @@
       $('merchantName').textContent = merchant.name
       scan()
     }).catch(function (e) {
-      $('loginErr').textContent = e.status === 401 ? 'That key is not recognised.' : e.message
+      $('loginErr').textContent = e.status === 401 ? t('badKey') : tErr(e.message)
       $('login').hidden = false
       $('app').hidden = true
     })
   }
 
   function logout() {
-    try { localStorage.removeItem(KEY) } catch (e) {}
+    save(KEY, null)
     location.reload()
   }
 
+  $('lang').onclick = function () {
+    lang = lang === 'ar' ? 'en' : 'ar'
+    save(LANG, lang)
+    renderCats()
+    apply()
+  }
   $('logout').onclick = logout
   $('save').onclick = function () {
     key = $('key').value.trim()
-    try { localStorage.setItem(KEY, key) } catch (e) {}
+    save(KEY, key)
     start()
   }
+  apply()
   if (key) start()
 })()

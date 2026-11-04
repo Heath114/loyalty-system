@@ -21,6 +21,12 @@ button,.btn{display:block;width:100%;text-align:center;font:600 16px/1 inherit;p
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{display:inline-block;width:auto;margin:0;padding:11px 14px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--fg);font:500 15px/1.1 inherit}
 .chip[aria-pressed=true]{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.topbar{display:flex;justify-content:flex-end}
+.btn.small{display:inline-block;width:auto;padding:9px 14px;font-size:14px;margin:0}
+.stack{display:grid;gap:8px}.stack .btn{margin:0}
+.btn.armed{background:#b3261e;color:#fff;border-color:#b3261e}
+.banner{background:#fff1c2;color:#5a4300;border-radius:12px;padding:11px 14px;margin:12px 0;font-weight:600}
+@media (prefers-color-scheme:dark){.banner{background:#3a2f0b;color:#f3d77a}}
 `
 
 export function page(title: string, body: Body, opts: { lang?: string; head?: string } = {}) {
