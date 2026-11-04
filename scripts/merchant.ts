@@ -22,6 +22,11 @@
  *   npm run merchant -- category --slug phones --id 3 --name "Repairs" --rate 5  (with --id: change one)
  *   npm run merchant -- category-archive --slug phones --id 3
  *
+ * Reminders, counted from the member's latest purchase in a category (members who agreed to offers):
+ *   npm run merchant -- reminder --slug phones --category 1 --days 335 --text "{name}, your phone's warranty ends next month." \
+ *       [--text-ar "..."] [--off] [--id 2 to change one]
+ *   npm run merchant -- reminder-remove --slug phones --id 2
+ *
  * Branches (the card shows up on the lock screen nearby):
  *   npm run merchant -- location --slug cafe --label "Abdoun" --lat 31.9539 --lng 35.8836 [--text "..."] [--text-ar "..."]
  *   npm run merchant -- location-remove --slug cafe --id 2
@@ -33,7 +38,10 @@ import {
   addLocation, archiveCategory, categories, createCategory, createMerchant, locations, merchantBySlug, removeLocation, touchMerchant,
   updateCategory,
 } from '../src/loyalty.ts'
-import { campaigns, cancelCampaign, createCampaign, localToEpoch, setTrigger, triggers, type TriggerKind } from '../src/messages.ts'
+import {
+  campaigns, cancelCampaign, createCampaign, createReminder, localToEpoch, reminders, removeReminder, setTrigger, triggers, updateReminder,
+  type TriggerKind,
+} from '../src/messages.ts'
 import { isPng, parseColor } from '../src/pass/png.ts'
 import { newStaffKey, sha256 } from '../src/tokens.ts'
 
@@ -42,7 +50,7 @@ const IMAGE_NAMES = /^((icon|logo|strip|thumbnail)(@[23]x)?|square)\.png$/
 
 const STRING_OPTIONS = [
   'slug', 'name', 'name-ar', 'program', 'threshold', 'points-per-jod', 'reward', 'reward-ar', 'bg', 'fg', 'label', 'file',
-  'kind', 'text', 'text-ar', 'days', 'at', 'id', 'lat', 'lng', 'rate', 'fixed',
+  'kind', 'text', 'text-ar', 'days', 'at', 'id', 'lat', 'lng', 'rate', 'fixed', 'category',
 ] as const
 const [command, ...rest] = process.argv.slice(2)
 const { values: a } = parseArgs({
@@ -105,6 +113,8 @@ switch (command) {
     console.table(triggers(db, m.id).map(({ kind, enabled, days, text }) => ({ kind, on: !!enabled, days, text })))
     console.log('\nPromotions:')
     console.table(campaigns(db, m.id).map((c) => ({ id: c.id, send_at: when(c.send_at), cancelled: !!c.cancelled_at, sent: c.sent, text: c.text })))
+    console.log('\nReminders:')
+    console.table(reminders(db, m.id).map(({ id, category, days, enabled, sent, text }) => ({ id, category, days, on: !!enabled, sent, text })))
     console.log('\nCategories:')
     console.table(categories(db, m.id).map(({ id, name, earn, points_per_jod, fixed_units }) => ({
       id, name, earns: earn === 'rate' ? `${points_per_jod} per JOD` : `${fixed_units} per purchase`,
@@ -149,6 +159,19 @@ switch (command) {
     console.log(`Category ${a.id} taken off the staff page. Purchases already in it keep it.`)
     break
   }
+  case 'reminder': {
+    const m = merchant()
+    const input = { category_id: Number(a.category), days: Number(a.days), text: a.text!, text_ar: a['text-ar'], enabled: !a.off }
+    const r = a.id ? updateReminder(db, m, Number(a.id), input) : createReminder(db, m, input)
+    console.log(`Reminder ${r.id} for ${m.name}: ${r.days} days after the latest purchase in category ${r.category_id}, ${r.enabled ? 'on' : 'off'}.`)
+    break
+  }
+  case 'reminder-remove': {
+    const m = merchant()
+    removeReminder(db, m, Number(a.id))
+    console.log(`Reminder ${a.id} stopped.`)
+    break
+  }
   case 'location': {
     const m = merchant()
     const l = addLocation(db, m, { label: a.label!, latitude: Number(a.lat), longitude: Number(a.lng), text: a.text, text_ar: a['text-ar'] })
@@ -162,6 +185,6 @@ switch (command) {
     break
   }
   default:
-    console.log('Commands: create, staff-key, image, list, show, trigger, promo, promo-cancel, category, category-archive, location, location-remove.')
+    console.log('Commands: create, staff-key, image, list, show, trigger, promo, promo-cancel, category, category-archive, reminder, reminder-remove, location, location-remove.')
     console.log('See the comment at the top of scripts/merchant.ts.')
 }

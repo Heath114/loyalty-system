@@ -184,16 +184,53 @@ const MIGRATIONS = [
   ALTER TABLE ledger ADD COLUMN category_id INTEGER REFERENCES categories(id);
   CREATE INDEX ledger_category ON ledger(merchant_id, category_id, created_at);
   `,
+  // 3: reminders counted from a purchase ("your warranty ends next month", "six weeks since your colour").
+  `
+  CREATE TABLE reminders (
+    id          INTEGER PRIMARY KEY,
+    merchant_id INTEGER NOT NULL REFERENCES merchants(id),
+    category_id INTEGER NOT NULL REFERENCES categories(id),
+    days        INTEGER NOT NULL CHECK (days BETWEEN 1 AND 1095),
+    text        TEXT NOT NULL,
+    text_ar     TEXT,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL,
+    archived_at INTEGER
+  );
+  CREATE INDEX reminders_merchant ON reminders(merchant_id);
+
+  -- SQLite cannot widen a CHECK, so messages is rebuilt to allow 'reminder' and to say which one.
+  CREATE TABLE messages_v3 (
+    id          INTEGER PRIMARY KEY,
+    merchant_id INTEGER NOT NULL REFERENCES merchants(id),
+    card_id     INTEGER NOT NULL REFERENCES cards(id),
+    kind        TEXT NOT NULL CHECK (kind IN ('birthday', 'winback', 'promo', 'reminder')),
+    campaign_id INTEGER REFERENCES campaigns(id),
+    reminder_id INTEGER REFERENCES reminders(id),
+    dedupe_key  TEXT NOT NULL,
+    text        TEXT NOT NULL,
+    local_day   TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    UNIQUE (card_id, dedupe_key)
+  );
+  INSERT INTO messages_v3 (id, merchant_id, card_id, kind, campaign_id, dedupe_key, text, local_day, created_at)
+    SELECT id, merchant_id, card_id, kind, campaign_id, dedupe_key, text, local_day, created_at FROM messages;
+  DROP TABLE messages;
+  ALTER TABLE messages_v3 RENAME TO messages;
+  CREATE INDEX messages_card ON messages(card_id, created_at);
+  CREATE INDEX messages_merchant ON messages(merchant_id, created_at);
+  `,
 ]
 
-export function openDb(path: string): DB {
+/** opts.version stops the migrations at that version: only tests use it, to check an upgrade keeps data. */
+export function openDb(path: string, opts: { version?: number } = {}): DB {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
   const db = new DatabaseSync(path)
   // busy_timeout: the merchant CLI writes to the same file as the running server; wait for its lock.
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
   db.exec(SCHEMA)
   const { user_version: done } = db.prepare('PRAGMA user_version').get() as { user_version: number }
-  MIGRATIONS.slice(done).forEach((sql, i) =>
+  MIGRATIONS.slice(done, opts.version ?? MIGRATIONS.length).forEach((sql, i) =>
     tx(db, () => {
       db.exec(sql)
       db.exec(`PRAGMA user_version = ${done + i + 1}`)
