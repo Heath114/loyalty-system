@@ -22,6 +22,10 @@ export interface Merchant {
   welcome_units: number
   /** "Bring a friend": what the member and the friend each get after the friend's first purchase. 0: off. */
   referral_units: number
+  /** How customers reach the merchant: printed on the privacy notice. */
+  contact_phone: string | null
+  contact_email: string | null
+  contact_address: string | null
 }
 
 export type Lang = 'ar' | 'en'
@@ -62,7 +66,7 @@ export class LoyaltyError extends Error {
 export type NewMerchant = Omit<
   Merchant,
   | 'id' | 'name_ar' | 'reward_text_ar' | 'bg_color' | 'fg_color' | 'label_color' | 'points_per_jod' | 'timezone' | 'changed_at' | 'synced_at'
-  | 'google_synced_at' | 'welcome_units' | 'referral_units'
+  | 'google_synced_at' | 'welcome_units' | 'referral_units' | 'contact_phone' | 'contact_email' | 'contact_address'
 > &
   Partial<Pick<Merchant, 'name_ar' | 'reward_text_ar' | 'bg_color' | 'fg_color' | 'label_color' | 'points_per_jod'>>
 

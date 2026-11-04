@@ -147,7 +147,8 @@ test('join flow: optional birthday and the phone language are kept; a bad birthd
   const bad = await join({ name: 'Lina', bday_day: '31', bday_month: '2' })
   assert.equal(bad.status, 400)
   const text = await bad.text()
-  assert.match(text, /Please check the birthday/)
+  assert.match(text, /يرجى التحقق من تاريخ الميلاد/, 'in the language of the page')
+  assert.match(text, /href="\/m\/cafe\?lang=en"/, 'the language switch goes to the join page, not the form post')
   assert.match(text, /value="2" selected/, 'keeps what they picked')
 
   // Downloading the pass from a phone in English switches the card to English.

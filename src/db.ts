@@ -333,6 +333,12 @@ const MIGRATIONS = [
   CREATE INDEX boosts_merchant ON boosts(merchant_id, starts_at);
   ALTER TABLE ledger ADD COLUMN boost_id INTEGER REFERENCES boosts(id);
   `,
+  // 10: how customers reach the merchant, printed on the privacy notice.
+  `
+  ALTER TABLE merchants ADD COLUMN contact_phone TEXT;
+  ALTER TABLE merchants ADD COLUMN contact_email TEXT;
+  ALTER TABLE merchants ADD COLUMN contact_address TEXT;
+  `,
 ]
 
 /** opts.version stops the migrations at that version: only tests use it, to check an upgrade keeps data. */

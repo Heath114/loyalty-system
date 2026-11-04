@@ -25,13 +25,19 @@ button,.btn{display:block;width:100%;text-align:center;font:600 16px/1 inherit;p
 .btn.small{display:inline-block;width:auto;padding:9px 14px;font-size:14px;margin:0}
 .stack{display:grid;gap:8px}.stack .btn{margin:0}
 .btn.armed{background:#b3261e;color:#fff;border-color:#b3261e}
+.langbar{display:flex;justify-content:flex-end;margin-bottom:4px}.langbar a{font-size:14px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14px}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.num{text-align:end;white-space:nowrap;padding-inline-start:12px}
+.linkbox{font:14px/1.4 ui-monospace,Menlo,Consolas,monospace;background:var(--bg);border:1px dashed var(--line);padding:10px;border-radius:10px;word-break:break-all;direction:ltr;text-align:left}
+.list{list-style:none;padding:0;margin:8px 0}.list li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
+.foot{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin-top:24px;font-size:14px}.foot a{color:var(--muted)}
+.btn.danger{background:#b3261e;color:#fff}
 .banner{background:#fff1c2;color:#5a4300;border-radius:12px;padding:11px 14px;margin:12px 0;font-weight:600}
 @media (prefers-color-scheme:dark){.banner{background:#3a2f0b;color:#f3d77a}}
 `
 
 export function page(title: string, body: Body, opts: { lang?: string; head?: string } = {}) {
   return html`<!doctype html>
-<html lang="${opts.lang ?? 'en'}">
+<html lang="${opts.lang ?? 'en'}" dir="${opts.lang === 'ar' ? 'rtl' : 'ltr'}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

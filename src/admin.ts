@@ -227,6 +227,9 @@ export interface MerchantInput {
   timezone?: string
   welcome_units?: number
   referral_units?: number
+  contact_phone?: string | null
+  contact_email?: string | null
+  contact_address?: string | null
 }
 
 function text(v: unknown, what: string, max: number, required: boolean): string | null {
@@ -275,6 +278,9 @@ export function updateMerchant(db: DB, m: Merchant, input: MerchantInput): Merch
     timezone: input.timezone === undefined ? m.timezone : String(input.timezone),
     welcome_units: input.welcome_units === undefined ? m.welcome_units : Number(input.welcome_units),
     referral_units: input.referral_units === undefined ? m.referral_units : Number(input.referral_units),
+    contact_phone: input.contact_phone === undefined ? m.contact_phone : text(input.contact_phone, 'phone number', 30, false),
+    contact_email: input.contact_email === undefined ? m.contact_email : text(input.contact_email, 'email', 120, false),
+    contact_address: input.contact_address === undefined ? m.contact_address : text(input.contact_address, 'address', 200, false),
   }
   if (v.program !== 'stamps' && v.program !== 'points') throw new LoyaltyError('The program is stamps or points')
   const most = v.program === 'stamps' ? 50 : 1_000_000
@@ -285,6 +291,8 @@ export function updateMerchant(db: DB, m: Merchant, input: MerchantInput): Merch
     throw new LoyaltyError('Points per JOD must be more than 0 and at most 1000')
   }
   if (!validTimeZone(v.timezone)) throw new LoyaltyError('Unknown time zone')
+  if (v.contact_phone && !/^\+?[0-9 ()-]{6,30}$/.test(v.contact_phone)) throw new LoyaltyError('Please check the contact phone number')
+  if (v.contact_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.contact_email)) throw new LoyaltyError('Please check the contact email')
   // A gift bigger than the whole card would hand out rewards for joining.
   for (const [k, what] of [['welcome_units', 'welcome gift'], ['referral_units', 'friend bonus']] as const) {
     if (!(Number.isInteger(v[k]) && v[k] >= 0 && v[k] <= v.reward_threshold)) {
@@ -300,10 +308,11 @@ export function updateMerchant(db: DB, m: Merchant, input: MerchantInput): Merch
     }
     db.prepare(
       `UPDATE merchants SET name = ?, name_ar = ?, program = ?, reward_threshold = ?, points_per_jod = ?, reward_text = ?,
-         reward_text_ar = ?, bg_color = ?, fg_color = ?, label_color = ?, timezone = ?, welcome_units = ?, referral_units = ? WHERE id = ?`,
+         reward_text_ar = ?, bg_color = ?, fg_color = ?, label_color = ?, timezone = ?, welcome_units = ?, referral_units = ?,
+         contact_phone = ?, contact_email = ?, contact_address = ? WHERE id = ?`,
     ).run(
       v.name, v.name_ar, v.program, v.reward_threshold, v.points_per_jod, v.reward_text, v.reward_text_ar, v.bg_color, v.fg_color,
-      v.label_color, v.timezone, v.welcome_units, v.referral_units, m.id,
+      v.label_color, v.timezone, v.welcome_units, v.referral_units, v.contact_phone, v.contact_email, v.contact_address, m.id,
     )
     touchMerchant(db, m.id)
     return db.prepare('SELECT * FROM merchants WHERE id = ?').get(m.id) as unknown as Merchant
