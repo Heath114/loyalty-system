@@ -4,7 +4,9 @@ import { Hono } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { raw } from 'hono/html'
 import type { Deps } from '../app.ts'
-import { earn, history, LoyaltyError, merchantById, merchantCard, redeem, rewardsAvailable, type Card, type Merchant } from '../loyalty.ts'
+import {
+  categories, earn, history, LoyaltyError, merchantById, merchantCard, redeem, rewardsAvailable, type Card, type Merchant,
+} from '../loyalty.ts'
 import { cardChanged } from '../notify.ts'
 import { parseBarcode, sha256 } from '../tokens.ts'
 import { page } from './layout.ts'
@@ -79,7 +81,8 @@ export function staffRoutes(deps: Deps) {
               <p class="muted" id="rName"></p>
               <p class="big" id="rBalance"></p>
               <p id="rReward"></p>
-              <div id="amountRow" hidden><label for="amount">Purchase amount (JOD)</label><input id="amount" type="number" inputmode="decimal" step="0.001" min="0"></div>
+              <div id="catRow" hidden><label>What was bought</label><div id="cats" class="chips"></div></div>
+              <div id="amountRow" hidden><label for="amount" id="amountLabel">Purchase amount (JOD)</label><input id="amount" type="number" inputmode="decimal" step="0.001" min="0"></div>
               <button id="earn">Add</button>
               <button id="redeem" class="btn secondary" hidden>Redeem reward</button>
               <p id="msg"></p>
@@ -96,7 +99,11 @@ export function staffRoutes(deps: Deps) {
 
   app.get('/api/staff/me', (c) => {
     const m = c.get('merchant')
-    return c.json({ merchant: { slug: m.slug, name: m.name, program: m.program, threshold: m.reward_threshold } })
+    return c.json({
+      merchant: { slug: m.slug, name: m.name, program: m.program, threshold: m.reward_threshold },
+      // Staff tap one of these before adding; a rate category needs the amount, a fixed one does not.
+      categories: categories(db, m.id).map((x) => ({ id: x.id, name: x.name, name_ar: x.name_ar, needsAmount: x.earn === 'rate' })),
+    })
   })
 
   app.post('/api/staff/lookup', async (c) => {
@@ -107,10 +114,10 @@ export function staffRoutes(deps: Deps) {
   })
 
   app.post('/api/staff/earn', async (c) => {
-    const body = await c.req.json<{ serial?: string; amountFils?: number; requestId?: string }>()
+    const body = await c.req.json<{ serial?: string; amountFils?: number; categoryId?: number; requestId?: string }>()
     const m = c.get('merchant')
     const r = earn(db, m, String(body.serial ?? ''), {
-      amountFils: body.amountFils ?? null, staffId: c.get('staffId'), idempotencyKey: body.requestId,
+      amountFils: body.amountFils ?? null, categoryId: body.categoryId ?? null, staffId: c.get('staffId'), idempotencyKey: body.requestId,
     })
     // A reward has just become ready when this purchase crossed a threshold.
     const t = m.reward_threshold

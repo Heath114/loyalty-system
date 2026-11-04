@@ -13,8 +13,22 @@ export function rewardText(m: Merchant, lang: Lang): string {
   return lang === 'ar' ? (m.reward_text_ar ?? m.reward_text) : m.reward_text
 }
 
-export function howItWorks(m: Merchant, lang: Lang): string {
+/**
+ * mixed: the merchant earns by category, so one rate per JOD would be wrong on the card. The text
+ * then says how to earn without promising a number.
+ */
+export function howItWorks(m: Merchant, lang: Lang, mixed = false): string {
   const reward = rewardText(m, lang)
+  if (mixed) {
+    if (lang === 'ar') {
+      return m.program === 'stamps'
+        ? `أبرز هذه البطاقة عند الكاونتر في كل زيارة لتجمع الطوابع. اجمع ${m.reward_threshold} طوابع واحصل على: ${reward}.`
+        : `أبرز هذه البطاقة عند الدفع لتجمع النقاط. عند ${m.reward_threshold} نقطة تحصل على: ${reward}.`
+    }
+    return m.program === 'stamps'
+      ? `Show this card at the counter on every visit to collect stamps. Collect ${m.reward_threshold} stamps and get: ${reward}.`
+      : `Show this card at the counter when you pay to earn points. At ${m.reward_threshold} points you get: ${reward}.`
+  }
   if (lang === 'ar') {
     return m.program === 'stamps'
       ? `أبرز هذه البطاقة عند الكاونتر في كل زيارة لتحصل على طابع. اجمع ${m.reward_threshold} طوابع واحصل على: ${reward}.`

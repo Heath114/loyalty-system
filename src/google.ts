@@ -34,8 +34,8 @@ export interface GoogleMessage {
 export interface GoogleWallet {
   classId(m: Merchant): string
   objectId(card: Card): string
-  /** Creates or updates the merchant's class: name, logo, colours, reward text, branches. */
-  syncClass(m: Merchant, locations: Location[]): Promise<void>
+  /** Creates or updates the merchant's class: name, logo, colours, reward text, branches. mixed: earns by category. */
+  syncClass(m: Merchant, locations: Location[], mixed?: boolean): Promise<void>
   /** Creates or updates a card's object with its current balance. */
   upsertCard(m: Merchant, card: Card): Promise<void>
   /** Pushes a new balance. notify: also a lock-screen notification. False if the card is not in Google Wallet. */
@@ -66,7 +66,7 @@ export function signJwt(claims: Record<string, unknown>, privateKey: string): st
   return `${unsigned}.${createSign('RSA-SHA256').update(unsigned).sign(privateKey).toString('base64url')}`
 }
 
-export function classJson(config: Config, g: GoogleConfig, m: Merchant, locations: Location[]): Record<string, unknown> {
+export function classJson(config: Config, g: GoogleConfig, m: Merchant, locations: Location[], mixed = false): Record<string, unknown> {
   return {
     id: `${g.issuerId}.merchant-${m.slug}`,
     issuerName: m.name,
@@ -85,7 +85,7 @@ export function classJson(config: Config, g: GoogleConfig, m: Merchant, location
     localizedAccountNameLabel: localized('Member', 'العضو'),
     textModulesData: [
       { id: 'reward', header: 'Reward', localizedHeader: localized('Reward', 'المكافأة'), body: rewardText(m, 'en'), localizedBody: localized(rewardText(m, 'en'), rewardText(m, 'ar')) },
-      { id: 'how', header: 'How it works', localizedHeader: localized('How it works', 'طريقة الاستخدام'), body: howItWorks(m, 'en'), localizedBody: localized(howItWorks(m, 'en'), howItWorks(m, 'ar')) },
+      { id: 'how', header: 'How it works', localizedHeader: localized('How it works', 'طريقة الاستخدام'), body: howItWorks(m, 'en', mixed), localizedBody: localized(howItWorks(m, 'en', mixed), howItWorks(m, 'ar', mixed)) },
     ],
     // Google notifies near these, within a radius it chooses, for customers who allow location.
     merchantLocations: locations.slice(0, 10).map((l) => ({ latitude: l.latitude, longitude: l.longitude })),
@@ -179,7 +179,7 @@ export function googleWallet(config: Config, f: typeof fetch = fetch): GoogleWal
     classId,
     objectId,
 
-    syncClass: (m, locations) => upsert('loyaltyClass', classId(m), classJson(config, g, m, locations)),
+    syncClass: (m, locations, mixed) => upsert('loyaltyClass', classId(m), classJson(config, g, m, locations, mixed)),
 
     upsertCard: (m, card) => upsert('loyaltyObject', objectId(card), objectJson(config, g, m, card)),
 

@@ -18,6 +18,9 @@ button,.btn{display:block;width:100%;text-align:center;font:600 16px/1 inherit;p
 .btn.secondary{background:transparent;color:var(--fg);border:1px solid var(--line)}
 .big{font-size:40px;font-weight:700;margin:4px 0}.qr svg{width:100%;height:auto;background:#fff;border-radius:12px;padding:12px}
 .err{color:#b3261e}.ok{color:#1b7f3b}[dir=rtl]{text-align:right}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-block;width:auto;margin:0;padding:11px 14px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--fg);font:500 15px/1.1 inherit}
+.chip[aria-pressed=true]{background:var(--accent);color:var(--bg);border-color:var(--accent)}
 `
 
 export function page(title: string, body: Body, opts: { lang?: string; head?: string } = {}) {

@@ -140,13 +140,124 @@ export function enrol(db: DB, merchant: Merchant, e: Enrolment): Card {
   return cardBySerial(db, serial)!
 }
 
-/** Units a purchase earns: one stamp per visit, or floor(JOD x points_per_jod) points. */
-export function unitsFor(merchant: Merchant, amountFils: number | null): number {
-  if (merchant.program === 'stamps') return 1
-  if (amountFils == null || !Number.isInteger(amountFils) || amountFils <= 0) {
-    throw new LoyaltyError('Enter the purchase amount')
+export interface Category {
+  id: number
+  merchant_id: number
+  name: string
+  name_ar: string | null
+  /** 'rate': points per JOD spent (points programs). 'fixed': a set number of stamps or points per purchase. */
+  earn: 'rate' | 'fixed'
+  points_per_jod: number | null
+  fixed_units: number | null
+  sort: number
+  archived_at: number | null
+  created_at: number
+}
+
+export interface CategoryInput {
+  name: string
+  name_ar?: string | null
+  earn: 'rate' | 'fixed'
+  points_per_jod?: number | null
+  fixed_units?: number | null
+  sort?: number
+}
+
+export const MAX_CATEGORIES = 30
+
+/** The merchant's categories in the order staff see them. Archived ones only when asked for. */
+export function categories(db: DB, merchantId: number, opts: { archived?: boolean } = {}): Category[] {
+  return db
+    .prepare(`SELECT * FROM categories WHERE merchant_id = ? ${opts.archived ? '' : 'AND archived_at IS NULL'} ORDER BY sort, id`)
+    .all(merchantId) as unknown as Category[]
+}
+
+/** One of the merchant's categories; another merchant's reads as not found. */
+export function categoryById(db: DB, merchantId: number, id: number): Category {
+  const c = db.prepare('SELECT * FROM categories WHERE id = ? AND merchant_id = ?').get(id, merchantId) as Category | undefined
+  if (!c) throw new LoyaltyError('Category not found', 404)
+  return c
+}
+
+function checkCategory(m: Merchant, c: CategoryInput) {
+  const name = String(c.name ?? '').trim()
+  if (!name || name.length > 40) throw new LoyaltyError('Give the category a name of up to 40 characters')
+  const nameAr = String(c.name_ar ?? '').trim() || null
+  if (nameAr && nameAr.length > 40) throw new LoyaltyError('Keep the Arabic name under 40 characters')
+  if (c.earn === 'rate') {
+    if (m.program !== 'points') throw new LoyaltyError('A stamp card earns a set number of stamps per purchase, not a rate')
+    const rate = Number(c.points_per_jod)
+    if (!(Number.isFinite(rate) && rate >= 0 && rate <= 1000)) throw new LoyaltyError('Points per JOD must be between 0 and 1000')
+    return { name, nameAr, earn: 'rate' as const, rate, fixed: null }
   }
-  return Math.floor((amountFils / 1000) * merchant.points_per_jod)
+  if (c.earn === 'fixed') {
+    const fixed = Number(c.fixed_units)
+    const most = m.program === 'stamps' ? m.reward_threshold : 1_000_000
+    if (!(Number.isInteger(fixed) && fixed >= 0 && fixed <= most)) {
+      throw new LoyaltyError(m.program === 'stamps' ? `Stamps per purchase must be between 0 and ${most}` : 'Points per purchase must be a whole number, 0 or more')
+    }
+    return { name, nameAr, earn: 'fixed' as const, rate: null, fixed }
+  }
+  throw new LoyaltyError('Choose how the category earns: rate or fixed')
+}
+
+/**
+ * Categories change what the card's "how it works" text says, so every card is refreshed after a
+ * change. Rates apply to purchases from then on; past ones keep what they earned.
+ */
+export function createCategory(db: DB, m: Merchant, c: CategoryInput): Category {
+  const v = checkCategory(m, c)
+  return tx(db, () => {
+    if (categories(db, m.id).length >= MAX_CATEGORIES) throw new LoyaltyError(`At most ${MAX_CATEGORIES} categories`, 409)
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO categories (merchant_id, name, name_ar, earn, points_per_jod, fixed_units, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(m.id, v.name, v.nameAr, v.earn, v.rate, v.fixed, Number(c.sort) || 0, Date.now())
+    touchMerchant(db, m.id)
+    return categoryById(db, m.id, Number(lastInsertRowid))
+  })
+}
+
+export function updateCategory(db: DB, m: Merchant, id: number, c: CategoryInput): Category {
+  const v = checkCategory(m, c)
+  const existing = categoryById(db, m.id, id)
+  db.prepare('UPDATE categories SET name = ?, name_ar = ?, earn = ?, points_per_jod = ?, fixed_units = ?, sort = ? WHERE id = ? AND merchant_id = ?').run(
+    v.name, v.nameAr, v.earn, v.rate, v.fixed, c.sort == null ? existing.sort : Number(c.sort) || 0, id, m.id,
+  )
+  touchMerchant(db, m.id)
+  return categoryById(db, m.id, id)
+}
+
+/** Takes a category off the staff page. Purchases already recorded in it keep it. */
+export function archiveCategory(db: DB, m: Merchant, id: number): void {
+  categoryById(db, m.id, id)
+  db.prepare('UPDATE categories SET archived_at = COALESCE(archived_at, ?) WHERE id = ? AND merchant_id = ?').run(Date.now(), id, m.id)
+  touchMerchant(db, m.id)
+}
+
+/**
+ * Units a purchase earns. Without a category: one stamp per visit, or floor(JOD x points_per_jod)
+ * points. With one: its fixed units, or floor(JOD x its rate).
+ */
+export function unitsFor(merchant: Merchant, amountFils: number | null, category: Category | null = null): number {
+  const hasAmount = amountFils != null
+  if (hasAmount && !(Number.isInteger(amountFils) && amountFils > 0)) throw new LoyaltyError('Check the purchase amount')
+  if (category?.earn === 'fixed') return category.fixed_units ?? 0
+  if (!category && merchant.program === 'stamps') return 1
+  if (!hasAmount) throw new LoyaltyError('Enter the purchase amount')
+  const rate = category ? (category.points_per_jod ?? 0) : merchant.points_per_jod
+  // Rounded to whole fils first, so 12.345 JOD x 10 is 123 points, never 123.44999 floored to 123 by luck.
+  return Math.floor(Math.round(amountFils * rate) / 1000)
+}
+
+/** The category a purchase goes in. Once a merchant has categories, every purchase needs one. */
+function purchaseCategory(db: DB, merchant: Merchant, categoryId: number | null | undefined): Category | null {
+  if (categoryId == null || (categoryId as unknown) === '') {
+    if (categories(db, merchant.id).length > 0) throw new LoyaltyError('Pick what was bought')
+    return null
+  }
+  const c = categoryById(db, merchant.id, Number(categoryId))
+  if (c.archived_at != null) throw new LoyaltyError('That category is no longer used', 409)
+  return c
 }
 
 export interface Movement {
@@ -175,18 +286,19 @@ function replay(db: DB, prior: { card_id: number; units: number }, serial: strin
  */
 export function earn(
   db: DB, merchant: Merchant, serial: string,
-  opts: { amountFils?: number | null; staffId?: number | null; idempotencyKey?: string },
+  opts: { amountFils?: number | null; categoryId?: number | null; staffId?: number | null; idempotencyKey?: string },
 ): Movement {
   return tx(db, () => {
     const prior = existing(db, merchant.id, opts.idempotencyKey)
     if (prior) return replay(db, prior, serial)
     const card = merchantCard(db, merchant.id, serial)
-    const units = unitsFor(merchant, opts.amountFils ?? null)
+    const category = purchaseCategory(db, merchant, opts.categoryId)
+    const units = unitsFor(merchant, opts.amountFils ?? null, category)
     const now = Math.max(Date.now(), card.updated_at + 1)
     db.prepare(
-      `INSERT INTO ledger (merchant_id, card_id, kind, units, amount_fils, staff_id, idempotency_key, created_at)
-       VALUES (?, ?, 'earn', ?, ?, ?, ?, ?)`,
-    ).run(merchant.id, card.id, units, opts.amountFils ?? null, opts.staffId ?? null, opts.idempotencyKey ?? null, now)
+      `INSERT INTO ledger (merchant_id, card_id, kind, units, amount_fils, category_id, staff_id, idempotency_key, created_at)
+       VALUES (?, ?, 'earn', ?, ?, ?, ?, ?, ?)`,
+    ).run(merchant.id, card.id, units, opts.amountFils ?? null, category?.id ?? null, opts.staffId ?? null, opts.idempotencyKey ?? null, now)
     db.prepare('UPDATE cards SET balance = balance + ?, lifetime_earned = lifetime_earned + ?, updated_at = ? WHERE id = ?').run(
       units, units, now, card.id,
     )
@@ -225,8 +337,13 @@ export function rewardsAvailable(merchant: Merchant, card: Card): number {
 
 export function history(db: DB, card: Card, limit = 20) {
   return db
-    .prepare('SELECT kind, units, amount_fils, created_at FROM ledger WHERE card_id = ? ORDER BY id DESC LIMIT ?')
-    .all(card.id, limit) as { kind: string; units: number; amount_fils: number | null; created_at: number }[]
+    .prepare(
+      `SELECT l.kind, l.units, l.amount_fils, l.created_at, c.name AS category, c.name_ar AS category_ar
+       FROM ledger l LEFT JOIN categories c ON c.id = l.category_id WHERE l.card_id = ? ORDER BY l.id DESC LIMIT ?`,
+    )
+    .all(card.id, limit) as {
+    kind: string; units: number; amount_fils: number | null; created_at: number; category: string | null; category_ar: string | null
+  }[]
 }
 
 export interface Location {

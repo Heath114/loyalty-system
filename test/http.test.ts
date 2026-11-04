@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { unzipSync } from 'fflate'
-import { enrol } from '../src/loyalty.ts'
+import { createCategory, enrol } from '../src/loyalty.ts'
 import { barcodeMessage, linkToken } from '../src/tokens.ts'
 import { settle, setup } from './helpers.ts'
 
@@ -168,4 +168,26 @@ test('logo for Google Wallet: the uploaded square logo, else a plain square in t
   db.prepare('INSERT INTO merchant_images (merchant_id, name, png) VALUES (?, ?, ?)').run(cafe.id, 'square.png', png)
   assert.deepEqual(Buffer.from(await (await app.request('/m/cafe/logo.png')).arrayBuffer()), png)
   assert.equal((await app.request('/m/nope/logo.png')).status, 404)
+})
+
+test('staff API: categories are listed, and a purchase goes in the one staff picked', async () => {
+  const { app, db, config, phones, staffKey } = setup()
+  const key = staffKey(phones.id)
+  const post = (path: string, body: unknown) =>
+    app.request(path, { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const phone = createCategory(db, phones, { name: 'Phone', name_ar: 'هاتف', earn: 'fixed', fixed_units: 50 })
+  createCategory(db, phones, { name: 'Accessories', earn: 'rate', points_per_jod: 10 })
+  const card = enrol(db, phones, { name: 'Lina', marketingConsent: true })
+
+  const me = (await (await app.request('/api/staff/me', { headers: { Authorization: `Bearer ${key}` } })).json()) as any
+  assert.deepEqual(me.categories.map((c: any) => [c.name, c.needsAmount]), [['Phone', false], ['Accessories', true]])
+
+  const none = await post('/api/staff/earn', { serial: card.serial, amountFils: 1000, requestId: 'a' })
+  assert.equal(none.status, 400)
+  assert.match(((await none.json()) as any).error, /Pick what was bought/)
+  const ok = (await (await post('/api/staff/earn', { serial: card.serial, categoryId: phone.id, requestId: 'b' })).json()) as any
+  assert.equal(ok.units, 50)
+
+  const look = (await (await post('/api/staff/lookup', { code: barcodeMessage(config.secret, card.serial) })).json()) as any
+  assert.equal(look.history[0].category, 'Phone')
 })

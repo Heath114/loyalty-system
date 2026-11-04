@@ -161,6 +161,29 @@ const MIGRATIONS = [
   -- Set once the card exists in Google Wallet, so updates only go to cards that are there.
   ALTER TABLE cards ADD COLUMN google_object_at INTEGER;
   `,
+  // 2: what was bought. Earn rates per category, and the purchase each reminder hangs off.
+  `
+  -- A merchant's purchase categories. 'rate' earns points per JOD (points programs only); 'fixed'
+  -- earns a set number of stamps or points per purchase, whatever it cost (a phone store's thank-you
+  -- for a device, where points on the full price would give away the margin). 0 records the visit
+  -- and the purchase without earning anything. Archived, never deleted: the ledger points at them.
+  CREATE TABLE categories (
+    id             INTEGER PRIMARY KEY,
+    merchant_id    INTEGER NOT NULL REFERENCES merchants(id),
+    name           TEXT NOT NULL,
+    name_ar        TEXT,
+    earn           TEXT NOT NULL CHECK (earn IN ('rate', 'fixed')),
+    points_per_jod REAL CHECK (points_per_jod IS NULL OR points_per_jod >= 0),
+    fixed_units    INTEGER CHECK (fixed_units IS NULL OR fixed_units >= 0),
+    sort           INTEGER NOT NULL DEFAULT 0,
+    archived_at    INTEGER,
+    created_at     INTEGER NOT NULL
+  );
+  CREATE INDEX categories_merchant ON categories(merchant_id);
+
+  ALTER TABLE ledger ADD COLUMN category_id INTEGER REFERENCES categories(id);
+  CREATE INDEX ledger_category ON ledger(merchant_id, category_id, created_at);
+  `,
 ]
 
 export function openDb(path: string): DB {

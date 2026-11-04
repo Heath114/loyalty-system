@@ -1,6 +1,6 @@
 import type { Config } from '../config.ts'
 import type { DB } from '../db.ts'
-import { locations as merchantLocations, rewardsAvailable, type Card, type Location, type Merchant } from '../loyalty.ts'
+import { categories, locations as merchantLocations, rewardsAvailable, type Card, type Location, type Merchant } from '../loyalty.ts'
 import { barcodeMessage } from '../tokens.ts'
 import { howItWorks, nearby, nextReward, rewardText, welcome } from './copy.ts'
 import { packPass, type PassFiles } from './pkpass.ts'
@@ -16,7 +16,7 @@ export function formatSerial(serial: string): string {
  * on the phone's language. Per-card values (the reward text, progress) are written into the strings
  * file of that card's pass.
  */
-function strings(merchant: Merchant, card: Card): { en: Record<string, string>; ar: Record<string, string> } {
+function strings(merchant: Merchant, card: Card, mixed: boolean): { en: Record<string, string>; ar: Record<string, string> } {
   const stamps = merchant.program === 'stamps'
   return {
     en: {
@@ -31,7 +31,7 @@ function strings(merchant: Merchant, card: Card): { en: Record<string, string>; 
       REWARD: 'REWARD',
       REWARD_TEXT: rewardText(merchant, 'en'),
       HOW: 'HOW IT WORKS',
-      HOW_TEXT: howItWorks(merchant, 'en'),
+      HOW_TEXT: howItWorks(merchant, 'en', mixed),
       CARD_NO: 'CARD NUMBER',
     },
     ar: {
@@ -46,7 +46,7 @@ function strings(merchant: Merchant, card: Card): { en: Record<string, string>; 
       REWARD: 'المكافأة',
       REWARD_TEXT: rewardText(merchant, 'ar'),
       HOW: 'طريقة الاستخدام',
-      HOW_TEXT: howItWorks(merchant, 'ar'),
+      HOW_TEXT: howItWorks(merchant, 'ar', mixed),
       CARD_NO: 'رقم البطاقة',
     },
   }
@@ -160,7 +160,7 @@ export function latestMessage(db: DB, card: Card): string | null {
 }
 
 export function buildPass(db: DB, config: Config, merchant: Merchant, card: Card): Uint8Array {
-  const s = strings(merchant, card)
+  const s = strings(merchant, card, categories(db, merchant.id).length > 0)
   const extras = { message: latestMessage(db, card), locations: merchantLocations(db, merchant.id) }
   return packPass(config.pass, {
     'pass.json': Buffer.from(JSON.stringify(passJson(config, merchant, card, extras))),

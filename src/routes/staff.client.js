@@ -5,6 +5,8 @@
   var key = null
   try { key = localStorage.getItem(KEY) } catch (e) {}
   var merchant = null
+  var cats = []
+  var cat = null
   var current = null
   var scanning = false
   var lastCode = ''
@@ -26,6 +28,36 @@
     return (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random()
   }
 
+  // What was bought: one tap. A single category is picked for staff; with several, every purchase
+  // needs one, chosen again each time so the last customer's category never carries over.
+  function renderCats() {
+    var box = $('cats')
+    box.textContent = ''
+    $('catRow').hidden = cats.length === 0
+    if (cats.length === 1) cat = cats[0]
+    cats.forEach(function (c) {
+      var b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'chip'
+      b.textContent = c.name
+      if (c.name_ar) b.title = c.name_ar
+      b.setAttribute('aria-pressed', cat && cat.id === c.id ? 'true' : 'false')
+      b.onclick = function () { cat = c; renderCats(); amountRow() }
+      box.appendChild(b)
+    })
+  }
+
+  function amountNeeded() {
+    if (!current || current.program !== 'points') return false
+    return cats.length === 0 || !cat || cat.needsAmount
+  }
+
+  function amountRow() {
+    if (!current) return
+    $('amountRow').hidden = current.program !== 'points'
+    $('amountLabel').textContent = amountNeeded() ? 'Purchase amount (JOD)' : 'Purchase amount (JOD, optional)'
+  }
+
   function show(card, note, ok) {
     current = card
     $('result').hidden = false
@@ -36,7 +68,7 @@
     $('rReward').textContent = card.rewardsAvailable > 0
       ? 'Reward ready (' + card.rewardsAvailable + '): ' + card.rewardText
       : 'Reward at ' + card.threshold + ': ' + card.rewardText
-    $('amountRow').hidden = card.program !== 'points'
+    amountRow()
     $('earn').textContent = card.program === 'stamps' ? 'Add a stamp' : 'Add points'
     $('redeem').hidden = card.rewardsAvailable < 1
     $('msg').textContent = note || ''
@@ -51,7 +83,11 @@
   }
 
   function lookup(code) {
-    api('lookup', { code: code }).then(function (r) { show(r.card) }).catch(fail)
+    api('lookup', { code: code }).then(function (r) {
+      if (cats.length > 1) cat = null
+      renderCats()
+      show(r.card)
+    }).catch(fail)
   }
 
   function busy(btn, p) {
@@ -61,15 +97,22 @@
 
   $('earn').onclick = function () {
     if (!current) return
+    if (cats.length > 0 && !cat) return fail(new Error('Pick what was bought'))
     var body = { serial: current.serial, requestId: requestId() }
+    if (cat) body.categoryId = cat.id
     if (current.program === 'points') {
-      var jod = parseFloat($('amount').value)
-      if (!(jod > 0)) return fail(new Error('Enter the purchase amount'))
-      body.amountFils = Math.round(jod * 1000)
+      var raw = $('amount').value.trim()
+      var jod = parseFloat(raw)
+      if (amountNeeded() && !(jod > 0)) return fail(new Error('Enter the purchase amount'))
+      if (raw && !(jod > 0)) return fail(new Error('Check the purchase amount'))
+      if (jod > 0) body.amountFils = Math.round(jod * 1000)
     }
     busy($('earn'), api('earn', body).then(function (r) {
       $('amount').value = ''
-      show(r.card, '+' + r.units + (r.card.program === 'stamps' ? ' stamp' : ' points') + ' added', true)
+      if (cats.length > 1) cat = null
+      renderCats()
+      var unit = r.card.program === 'stamps' ? (r.units === 1 ? ' stamp' : ' stamps') : ' points'
+      show(r.card, r.units === 0 ? 'Purchase recorded' : '+' + r.units + unit + ' added', true)
     }).catch(fail))
   }
 
@@ -117,6 +160,8 @@
   function start() {
     api('me').then(function (r) {
       merchant = r.merchant
+      cats = r.categories || []
+      renderCats()
       $('login').hidden = true
       $('app').hidden = false
       $('merchantName').textContent = merchant.name

@@ -16,6 +16,12 @@
  *   npm run merchant -- promo --slug cafe --text "Two for one on Friday" [--text-ar ...] [--at "2026-10-23 10:00"]
  *   npm run merchant -- promo-cancel --slug cafe --id 4
  *
+ * Categories (what was bought; once there is one, staff pick one for every purchase):
+ *   npm run merchant -- category --slug phones --name "Accessories" [--name-ar "إكسسوارات"] --rate 10
+ *   npm run merchant -- category --slug phones --name "Phone" --fixed 50        (a set thank-you per phone, whatever it cost)
+ *   npm run merchant -- category --slug phones --id 3 --name "Repairs" --rate 5  (with --id: change one)
+ *   npm run merchant -- category-archive --slug phones --id 3
+ *
  * Branches (the card shows up on the lock screen nearby):
  *   npm run merchant -- location --slug cafe --label "Abdoun" --lat 31.9539 --lng 35.8836 [--text "..."] [--text-ar "..."]
  *   npm run merchant -- location-remove --slug cafe --id 2
@@ -23,7 +29,10 @@
 import { readFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { openDb } from '../src/db.ts'
-import { addLocation, createMerchant, locations, merchantBySlug, removeLocation, touchMerchant } from '../src/loyalty.ts'
+import {
+  addLocation, archiveCategory, categories, createCategory, createMerchant, locations, merchantBySlug, removeLocation, touchMerchant,
+  updateCategory,
+} from '../src/loyalty.ts'
 import { campaigns, cancelCampaign, createCampaign, localToEpoch, setTrigger, triggers, type TriggerKind } from '../src/messages.ts'
 import { isPng, parseColor } from '../src/pass/png.ts'
 import { newStaffKey, sha256 } from '../src/tokens.ts'
@@ -33,7 +42,7 @@ const IMAGE_NAMES = /^((icon|logo|strip|thumbnail)(@[23]x)?|square)\.png$/
 
 const STRING_OPTIONS = [
   'slug', 'name', 'name-ar', 'program', 'threshold', 'points-per-jod', 'reward', 'reward-ar', 'bg', 'fg', 'label', 'file',
-  'kind', 'text', 'text-ar', 'days', 'at', 'id', 'lat', 'lng',
+  'kind', 'text', 'text-ar', 'days', 'at', 'id', 'lat', 'lng', 'rate', 'fixed',
 ] as const
 const [command, ...rest] = process.argv.slice(2)
 const { values: a } = parseArgs({
@@ -96,6 +105,10 @@ switch (command) {
     console.table(triggers(db, m.id).map(({ kind, enabled, days, text }) => ({ kind, on: !!enabled, days, text })))
     console.log('\nPromotions:')
     console.table(campaigns(db, m.id).map((c) => ({ id: c.id, send_at: when(c.send_at), cancelled: !!c.cancelled_at, sent: c.sent, text: c.text })))
+    console.log('\nCategories:')
+    console.table(categories(db, m.id).map(({ id, name, earn, points_per_jod, fixed_units }) => ({
+      id, name, earns: earn === 'rate' ? `${points_per_jod} per JOD` : `${fixed_units} per purchase`,
+    })))
     console.log('\nBranches:')
     console.table(locations(db, m.id).map(({ id, label, latitude, longitude }) => ({ id, label, latitude, longitude })))
     break
@@ -120,6 +133,22 @@ switch (command) {
     console.log(`Promotion ${a.id} cancelled. Cards it already reached keep it.`)
     break
   }
+  case 'category': {
+    const m = merchant()
+    const input = {
+      name: a.name!, name_ar: a['name-ar'], earn: a.rate != null ? ('rate' as const) : ('fixed' as const),
+      points_per_jod: a.rate != null ? Number(a.rate) : null, fixed_units: a.fixed != null ? Number(a.fixed) : null,
+    }
+    const c = a.id ? updateCategory(db, m, Number(a.id), input) : createCategory(db, m, input)
+    console.log(`Category ${c.id} for ${m.name}: ${c.name}, ${c.earn === 'rate' ? `${c.points_per_jod} points per JOD` : `${c.fixed_units} per purchase`}.`)
+    break
+  }
+  case 'category-archive': {
+    const m = merchant()
+    archiveCategory(db, m, Number(a.id))
+    console.log(`Category ${a.id} taken off the staff page. Purchases already in it keep it.`)
+    break
+  }
   case 'location': {
     const m = merchant()
     const l = addLocation(db, m, { label: a.label!, latitude: Number(a.lat), longitude: Number(a.lng), text: a.text, text_ar: a['text-ar'] })
@@ -133,6 +162,6 @@ switch (command) {
     break
   }
   default:
-    console.log('Commands: create, staff-key, image, list, show, trigger, promo, promo-cancel, location, location-remove.')
+    console.log('Commands: create, staff-key, image, list, show, trigger, promo, promo-cancel, category, category-archive, location, location-remove.')
     console.log('See the comment at the top of scripts/merchant.ts.')
 }

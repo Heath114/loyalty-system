@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { unzipSync } from 'fflate'
-import { earn, enrol } from '../src/loyalty.ts'
+import { createCategory, earn, enrol } from '../src/loyalty.ts'
 import { buildPass, passJson } from '../src/pass/build.ts'
 import { parseBarcode } from '../src/tokens.ts'
 import { setup } from './helpers.ts'
@@ -80,4 +80,17 @@ test('pass.strings: UTF-16 with BOM, Arabic present', () => {
   const text = Buffer.from(ar.slice(2)).toString('utf16le')
   assert.match(text, /"REWARD_TEXT" = "قهوة مجانية";/)
   assert.match(text, /"CHANGE_BALANCE" = ".*%@.*";/)
+})
+
+test('pass: with categories the card explains earning without promising one rate', () => {
+  const { db, config, phones } = setup()
+  const card = enrol(db, phones, { name: 'Lina', marketingConsent: true })
+  const how = () => {
+    const files = unzipSync(buildPass(db, config, phones, card))
+    return Buffer.from(files['en.lproj/pass.strings']).toString('utf16le')
+  }
+  assert.match(how(), /Every JOD earns 10 points/)
+  createCategory(db, phones, { name: 'Phone', earn: 'fixed', fixed_units: 50 })
+  assert.doesNotMatch(how(), /Every JOD earns/)
+  assert.match(how(), /when you pay to earn points\. At 100 points you get: Free case\./)
 })
