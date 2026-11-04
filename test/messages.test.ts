@@ -172,15 +172,15 @@ test('scheduler: sends due messages and pushes them to Apple devices; refreshes 
   db.prepare('INSERT INTO pass_registrations (device_library_id, serial, push_token, created_at) VALUES (?, ?, ?, ?)').run('d1', card.serial, 'b'.repeat(64), Date.now())
   createCampaign(db, cafe, { text: 'Hello' })
 
-  assert.deepEqual(await tick(db, deps, amman(1)), { refreshed: 0, sent: 1 })
+  assert.deepEqual(await tick(db, deps, amman(1)), { refreshed: 0, sent: 1, bonuses: 0 })
   assert.deepEqual(pushed, [['b'.repeat(64)]])
 
   addLocation(db, cafe, { label: 'Abdoun', latitude: 31.95, longitude: 35.88 })
   const before = (db.prepare('SELECT updated_at FROM cards WHERE id = ?').get(card.id) as { updated_at: number }).updated_at
-  assert.deepEqual(await tick(db, deps, amman(1, '13:00')), { refreshed: 1, sent: 0 })
+  assert.deepEqual(await tick(db, deps, amman(1, '13:00')), { refreshed: 1, sent: 0, bonuses: 0 })
   const afterRow = db.prepare('SELECT updated_at FROM cards WHERE id = ?').get(card.id) as { updated_at: number }
   assert.ok(afterRow.updated_at > before)
   assert.equal(pushed.length, 2)
-  assert.deepEqual(await tick(db, deps, amman(1, '13:05')), { refreshed: 0, sent: 0 }, 'refreshed once')
+  assert.deepEqual(await tick(db, deps, amman(1, '13:05')), { refreshed: 0, sent: 0, bonuses: 0 }, 'refreshed once')
   assert.equal(merchantById(db, cafe.id).synced_at, merchantById(db, cafe.id).changed_at)
 })

@@ -305,6 +305,17 @@ const MIGRATIONS = [
   CREATE INDEX rewards_merchant ON rewards(merchant_id);
   ALTER TABLE ledger ADD COLUMN reward_id INTEGER REFERENCES rewards(id);
   `,
+  // 8: a welcome gift, and "bring a friend": each card's invite code, who invited whom.
+  `
+  ALTER TABLE merchants ADD COLUMN welcome_units INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE merchants ADD COLUMN referral_units INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE cards ADD COLUMN invite_code TEXT;
+  ALTER TABLE cards ADD COLUMN referred_by INTEGER REFERENCES cards(id);
+  CREATE UNIQUE INDEX cards_invite ON cards(merchant_id, invite_code);
+  CREATE INDEX cards_referred ON cards(referred_by);
+  -- One referral bonus per card per friend, whatever runs twice.
+  CREATE UNIQUE INDEX ledger_referral ON ledger(card_id, ref_id) WHERE kind = 'bonus' AND note = 'referral';
+  `,
 ]
 
 /** opts.version stops the migrations at that version: only tests use it, to check an upgrade keeps data. */

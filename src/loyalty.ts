@@ -1,5 +1,5 @@
 import { tx, type DB } from './db.ts'
-import { newAuthToken, newSerial } from './tokens.ts'
+import { newAuthToken, newInviteCode, newSerial } from './tokens.ts'
 
 export interface Merchant {
   id: number
@@ -18,6 +18,10 @@ export interface Merchant {
   changed_at: number
   synced_at: number
   google_synced_at: number
+  /** Stamps or points every new member starts with. 0: none. */
+  welcome_units: number
+  /** "Bring a friend": what the member and the friend each get after the friend's first purchase. 0: off. */
+  referral_units: number
 }
 
 export type Lang = 'ar' | 'en'
@@ -41,6 +45,10 @@ export interface Card {
   last_message_id: number | null
   google_object_at: number | null
   deleted_at: number | null
+  /** This card's "bring a friend" code, made the first time it is needed. */
+  invite_code: string | null
+  /** The card whose invite this member joined with. */
+  referred_by: number | null
 }
 
 export class LoyaltyError extends Error {
@@ -53,7 +61,8 @@ export class LoyaltyError extends Error {
 
 export type NewMerchant = Omit<
   Merchant,
-  'id' | 'name_ar' | 'reward_text_ar' | 'bg_color' | 'fg_color' | 'label_color' | 'points_per_jod' | 'timezone' | 'changed_at' | 'synced_at' | 'google_synced_at'
+  | 'id' | 'name_ar' | 'reward_text_ar' | 'bg_color' | 'fg_color' | 'label_color' | 'points_per_jod' | 'timezone' | 'changed_at' | 'synced_at'
+  | 'google_synced_at' | 'welcome_units' | 'referral_units'
 > &
   Partial<Pick<Merchant, 'name_ar' | 'reward_text_ar' | 'bg_color' | 'fg_color' | 'label_color' | 'points_per_jod'>>
 
@@ -104,6 +113,8 @@ export interface Enrolment {
   birthday?: string
   marketingConsent: boolean
   lang?: Lang
+  /** The invite code from a friend's link, if they came that way. A wrong or stale one is ignored. */
+  inviteCode?: string
 }
 
 const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
@@ -134,12 +145,46 @@ export function enrol(db: DB, merchant: Merchant, e: Enrolment): Card {
   if (e.birthday && !/^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.test(e.birthday)) throw new LoyaltyError('Please check the birthday')
   const now = Date.now()
   const serial = newSerial()
-  db.prepare(
-    `INSERT INTO cards (merchant_id, serial, auth_token, member_name, member_phone, member_email, birthday, marketing_consent, lang,
-       created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(merchant.id, serial, newAuthToken(), name, phone, email, e.birthday || null, e.marketingConsent ? 1 : 0, e.lang ?? 'ar', now, now)
-  return cardBySerial(db, serial)!
+  return tx(db, () => {
+    const referrer = e.inviteCode ? cardByInvite(db, merchant.id, e.inviteCode) : undefined
+    const { lastInsertRowid } = db.prepare(
+      `INSERT INTO cards (merchant_id, serial, auth_token, member_name, member_phone, member_email, birthday, marketing_consent, lang,
+         referred_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      merchant.id, serial, newAuthToken(), name, phone, email, e.birthday || null, e.marketingConsent ? 1 : 0, e.lang ?? 'ar',
+      referrer?.id ?? null, now, now,
+    )
+    // The welcome gift is on the card from the first moment, so the first look at it already shows it.
+    const welcome = merchantById(db, merchant.id).welcome_units
+    if (welcome > 0) {
+      db.prepare("INSERT INTO ledger (merchant_id, card_id, kind, units, note, created_at) VALUES (?, ?, 'bonus', ?, 'welcome', ?)").run(
+        merchant.id, Number(lastInsertRowid), welcome, now,
+      )
+      db.prepare('UPDATE cards SET balance = balance + ?, lifetime_earned = lifetime_earned + ? WHERE id = ?').run(welcome, welcome, Number(lastInsertRowid))
+    }
+    return cardBySerial(db, serial)!
+  })
+}
+
+/** The live card an invite code belongs to, at this merchant. */
+export function cardByInvite(db: DB, merchantId: number, code: string): Card | undefined {
+  const c = String(code ?? '').trim().toUpperCase()
+  if (!/^[0-9A-Z]{6,12}$/.test(c)) return undefined
+  return db.prepare('SELECT * FROM cards WHERE merchant_id = ? AND invite_code = ? AND deleted_at IS NULL').get(merchantId, c) as Card | undefined
+}
+
+/** The card's invite code, made on first use. */
+export function inviteCode(db: DB, card: Card): string {
+  if (card.invite_code) return card.invite_code
+  for (let i = 0; i < 5; i++) {
+    const code = newInviteCode()
+    const r = db.prepare('UPDATE cards SET invite_code = ? WHERE id = ? AND invite_code IS NULL').run(code, card.id)
+    if (r.changes) return code
+    const now = db.prepare('SELECT invite_code FROM cards WHERE id = ?').get(card.id) as { invite_code: string | null }
+    if (now.invite_code) return now.invite_code
+  }
+  throw new Error('Could not make an invite code')
 }
 
 export interface Category {

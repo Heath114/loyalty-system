@@ -11,6 +11,14 @@ export function newSerial(): string {
 }
 
 /** Apple's authenticationToken for the pass web service. Must be at least 16 characters. */
+/** A short code for a member's "bring a friend" link: 7 base32 characters, unique per merchant (the index retries a clash). */
+export function newInviteCode(): string {
+  const bytes = randomBytes(7)
+  let s = ''
+  for (let i = 0; i < 7; i++) s += ALPHABET[bytes[i] & 31]
+  return s
+}
+
 export function newAuthToken(): string {
   return randomBytes(24).toString('base64url')
 }

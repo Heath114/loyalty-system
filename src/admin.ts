@@ -225,6 +225,8 @@ export interface MerchantInput {
   fg_color?: string
   label_color?: string
   timezone?: string
+  welcome_units?: number
+  referral_units?: number
 }
 
 function text(v: unknown, what: string, max: number, required: boolean): string | null {
@@ -271,6 +273,8 @@ export function updateMerchant(db: DB, m: Merchant, input: MerchantInput): Merch
     fg_color: input.fg_color === undefined ? m.fg_color : color(input.fg_color),
     label_color: input.label_color === undefined ? m.label_color : color(input.label_color),
     timezone: input.timezone === undefined ? m.timezone : String(input.timezone),
+    welcome_units: input.welcome_units === undefined ? m.welcome_units : Number(input.welcome_units),
+    referral_units: input.referral_units === undefined ? m.referral_units : Number(input.referral_units),
   }
   if (v.program !== 'stamps' && v.program !== 'points') throw new LoyaltyError('The program is stamps or points')
   const most = v.program === 'stamps' ? 50 : 1_000_000
@@ -281,6 +285,12 @@ export function updateMerchant(db: DB, m: Merchant, input: MerchantInput): Merch
     throw new LoyaltyError('Points per JOD must be more than 0 and at most 1000')
   }
   if (!validTimeZone(v.timezone)) throw new LoyaltyError('Unknown time zone')
+  // A gift bigger than the whole card would hand out rewards for joining.
+  for (const [k, what] of [['welcome_units', 'welcome gift'], ['referral_units', 'friend bonus']] as const) {
+    if (!(Number.isInteger(v[k]) && v[k] >= 0 && v[k] <= v.reward_threshold)) {
+      throw new LoyaltyError(`The ${what} is a whole number from 0 to ${v.reward_threshold}`)
+    }
+  }
   return tx(db, () => {
     if (v.program !== m.program) {
       const used = db.prepare('SELECT 1 FROM ledger WHERE merchant_id = ? LIMIT 1').get(m.id)
@@ -290,10 +300,10 @@ export function updateMerchant(db: DB, m: Merchant, input: MerchantInput): Merch
     }
     db.prepare(
       `UPDATE merchants SET name = ?, name_ar = ?, program = ?, reward_threshold = ?, points_per_jod = ?, reward_text = ?,
-         reward_text_ar = ?, bg_color = ?, fg_color = ?, label_color = ?, timezone = ? WHERE id = ?`,
+         reward_text_ar = ?, bg_color = ?, fg_color = ?, label_color = ?, timezone = ?, welcome_units = ?, referral_units = ? WHERE id = ?`,
     ).run(
       v.name, v.name_ar, v.program, v.reward_threshold, v.points_per_jod, v.reward_text, v.reward_text_ar, v.bg_color, v.fg_color,
-      v.label_color, v.timezone, m.id,
+      v.label_color, v.timezone, v.welcome_units, v.referral_units, m.id,
     )
     touchMerchant(db, m.id)
     return db.prepare('SELECT * FROM merchants WHERE id = ?').get(m.id) as unknown as Merchant

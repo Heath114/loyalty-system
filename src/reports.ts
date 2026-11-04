@@ -1,6 +1,7 @@
 import type { DB } from './db.ts'
 import { history, LoyaltyError, merchantCard, type Merchant } from './loyalty.ts'
 import { localToEpoch, zoned, type MessageKind } from './messages.ts'
+import { referralStats, type ReferralStats } from './referrals.ts'
 
 /**
  * What a merchant sees about their program (docs/STUDY.md §2.6): members, visits, how many come
@@ -84,6 +85,9 @@ export interface Report {
   /** Visits recorded without a staff key (command line, imports). */
   unattributed_visits: number
   messages: MessageResult[]
+  referrals: ReferralStats
+  /** New members who started with the welcome gift, and what it added up to. */
+  welcome: { members: number; units: number }
 }
 
 type Row = Record<string, number | string | null>
@@ -183,6 +187,14 @@ export function report(db: DB, m: Merchant, p: Period): Report {
     staff,
     unattributed_visits: n(unattributed.n),
     messages: messageResults(db, m, p),
+    referrals: referralStats(db, m, p.from, p.to),
+    welcome: (() => {
+      const w = one(
+        `SELECT COUNT(*) AS n, COALESCE(SUM(units), 0) AS units FROM ledger WHERE merchant_id = ? AND kind = 'bonus' AND note = 'welcome' AND ${inPeriod}`,
+        m.id, p.from, p.to,
+      )
+      return { members: n(w.n), units: n(w.units) }
+    })(),
   }
 }
 

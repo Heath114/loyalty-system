@@ -1,13 +1,15 @@
 import type { DB } from './db.ts'
 import type { Merchant } from './loyalty.ts'
 import { due, record, type Message, type Outgoing } from './messages.ts'
-import { deliverMessages, refreshAppleCards, syncGoogleClass, type Channels } from './notify.ts'
+import { cardChanged, deliverMessages, refreshAppleCards, syncGoogleClass, type Channels } from './notify.ts'
+import { grantReferralBonuses } from './referrals.ts'
 
 /**
- * One pass of the background work: refresh cards whose merchant changed, then send whatever
- * messages are due. Safe to run as often as you like: every message is recorded once (messages.ts).
+ * One pass of the background work: refresh cards whose merchant changed, pay referral bonuses that
+ * are due, then send whatever messages are due. Safe to run as often as you like: every message and
+ * every bonus is recorded once.
  */
-export async function tick(db: DB, ch: Channels, now = Date.now()): Promise<{ refreshed: number; sent: number }> {
+export async function tick(db: DB, ch: Channels, now = Date.now()): Promise<{ refreshed: number; sent: number; bonuses: number }> {
   const changed = db.prepare('SELECT * FROM merchants WHERE changed_at > synced_at').all() as unknown as Merchant[]
   for (const m of changed) await refreshAppleCards(db, ch, m, now)
 
@@ -19,13 +21,16 @@ export async function tick(db: DB, ch: Channels, now = Date.now()): Promise<{ re
     }
   }
 
+  const bonuses = grantReferralBonuses(db, now)
+  for (const b of bonuses) await cardChanged(db, ch, b.serial, { rewardReady: b.rewardReady }).catch((e) => console.error('push failed', e))
+
   const sent: { outgoing: Outgoing; message: Message }[] = []
   for (const outgoing of due(db, now)) {
     const message = record(db, outgoing, now)
     if (message) sent.push({ outgoing, message })
   }
   await deliverMessages(db, ch, sent)
-  return { refreshed: changed.length, sent: sent.length }
+  return { refreshed: changed.length, sent: sent.length, bonuses: bonuses.length }
 }
 
 /** Runs tick() now and every few minutes, one at a time. Returns a function that stops it. */
@@ -36,7 +41,7 @@ export function startScheduler(db: DB, ch: Channels, everyMs = 5 * 60_000): () =
     running = true
     try {
       const r = await tick(db, ch)
-      if (r.refreshed || r.sent) console.log(`scheduler: ${r.sent} messages sent, ${r.refreshed} merchants refreshed`)
+      if (r.refreshed || r.sent || r.bonuses) console.log(`scheduler: ${r.sent} messages sent, ${r.bonuses} referral bonuses, ${r.refreshed} merchants refreshed`)
     } catch (e) {
       console.error('scheduler run failed', e)
     } finally {

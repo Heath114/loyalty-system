@@ -37,6 +37,7 @@ function joinForm(m: Merchant, error?: string, values: Record<string, string> = 
       </p>
       ${m.reward_text_ar ? html`<p dir="rtl" class="muted">${m.reward_text_ar}</p>` : ''}
       <form class="card" method="post" action="/m/${m.slug}/join">
+        ${values.ref ? html`<input type="hidden" name="ref" value="${values.ref}">` : ''}
         ${error ? html`<p class="err">${error}</p>` : ''}
         <label for="name">Your name · الاسم</label>
         <input id="name" name="name" required maxlength="80" autocomplete="name" value="${values.name ?? ''}">
@@ -77,7 +78,8 @@ export function publicRoutes({ db, config, google }: Deps) {
     return card && checkLinkToken(config.secret, serial, token) ? card : undefined
   }
 
-  app.get('/m/:slug', (c) => c.html(joinForm(merchantOr404(c.req.param('slug')))))
+  // ?ref= is a member's invite code; it rides along in the form and is checked when the card is made.
+  app.get('/m/:slug', (c) => c.html(joinForm(merchantOr404(c.req.param('slug')), undefined, { ref: (c.req.query('ref') ?? '').slice(0, 20) })))
 
   /** The QR printed for the counter: it opens the join page. */
   app.get('/m/:slug/qr.svg', (c) => {
@@ -152,7 +154,7 @@ body{margin:0;background:#fff;color:#111;font:16px/1.4 -apple-system,system-ui,T
     const form = await c.req.parseBody()
     const values = {
       name: String(form.name ?? ''), phone: String(form.phone ?? ''), consent: form.consent ? '1' : '',
-      bday_day: String(form.bday_day ?? ''), bday_month: String(form.bday_month ?? ''),
+      bday_day: String(form.bday_day ?? ''), bday_month: String(form.bday_month ?? ''), ref: String(form.ref ?? '').slice(0, 20),
     }
     try {
       const card = enrol(db, m, {
@@ -161,6 +163,7 @@ body{margin:0;background:#fff;color:#111;font:16px/1.4 -apple-system,system-ui,T
         birthday: parseBirthday(values.bday_day, values.bday_month) ?? undefined,
         marketingConsent: !!values.consent,
         lang: langFrom(c.req.header('Accept-Language')),
+        inviteCode: values.ref || undefined,
       })
       return c.redirect(`/c/${card.serial}?t=${linkToken(config.secret, card.serial)}`, 303)
     } catch (e) {
