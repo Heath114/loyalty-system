@@ -11,6 +11,7 @@
   color-scheme:dark;
 }}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,system-ui,"Segoe UI",Tahoma,"Noto Sans Arabic",sans-serif}
 [dir=rtl] body,[dir=rtl]{font-family:-apple-system,system-ui,Tahoma,"Segoe UI","Noto Sans Arabic",sans-serif}

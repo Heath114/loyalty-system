@@ -84,7 +84,22 @@
       account: 'Your sign-in', admins: 'People who can sign in', adminsHint: 'Everyone here can change everything on this dashboard.',
       addAdmin: 'Add person', adminName: 'Their name', tempPassword: 'Give them this password. They choose their own when they first sign in. It is shown only once.',
       you: 'you', timezone: 'Time zone', timezoneHint: 'Messages go out between 10:00 and 21:00 in this time zone.', pending: 'Has not signed in yet',
-      changePassword: 'Change password'
+      changePassword: 'Change password',
+      adjust: 'Add or take away', adjustHint: 'A purchase staff forgot to record, a goodwill gesture, a correction. A minus sign takes away. The member sees "Correction by the shop"; your reason stays here.',
+      adjustUnits: 'How many (+ or -)', reason: 'Reason', adjustBtn: 'Apply', adjusted: 'Balance updated',
+      k_adjust: 'Correction', k_welcome: 'Welcome gift', k_referral: 'Friend bonus', k_void: 'Undo by staff', undoneTag: 'undone',
+      moreRewards: 'More rewards', moreRewardsHint: 'Besides the reward above, offer more at other prices. Staff see the ones a card can afford; the card lists them all.',
+      onTheCard: 'on the card', rewardName: 'Reward in English', rewardNameAr: 'Reward in Arabic', cost: 'Cost', addReward: 'Add reward', saveReward: 'Save reward',
+      gifts: 'Gifts', giftsHint: 'Each is at most one whole reward; 0 switches it off. The friend bonus is paid once the friend\'s first purchase is 10 minutes old, to both of them; a member is paid for at most 10 friends a month.',
+      welcomeGift: 'Welcome gift for every new member', referralGift: 'Bring a friend: what each of them gets',
+      boosts: 'Bonus periods', boostsHint: 'For a while, purchases earn more: double points this weekend, triple on accessories during Eid. At most 31 days. Tell members with a promotion.',
+      boostName: 'Name in English', boostNameAr: 'Name in Arabic', multiplier: 'Multiplier', appliesTo: 'Applies to', everything: 'Every purchase',
+      starts: 'Starts', ends: 'Ends', startNow: 'empty: now', addBoost: 'Plan bonus period', running: 'Running', upcoming: 'Coming', endBoost: 'End it',
+      contact: 'How customers reach you', contactHint: 'Printed on your privacy notice. Have your lawyer read the notice before your first customer.',
+      contactPhone: 'Phone', contactEmail: 'Email', contactAddress: 'Address', privacyPage: 'Open the privacy notice',
+      friends: 'Friends who joined', friendsSub: '{n} bought something and were rewarded', topInviters: 'Members who brought friends',
+      welcomeTile: 'Welcome gifts', rewardsGiven: 'Rewards given', boostResults: 'Bonus periods', boostedPurchases: 'Purchases boosted', undoneCol: 'Undone',
+      friendsCol: 'Friends',
     },
     ar: {
       title: 'لوحة بطاقة الولاء', signIn: 'تسجيل الدخول', email: 'البريد الإلكتروني', password: 'كلمة المرور', signOut: 'تسجيل الخروج',
@@ -144,7 +159,22 @@
       account: 'حسابك', admins: 'من يمكنهم الدخول', adminsHint: 'كل من هنا يستطيع تغيير كل شيء في هذه اللوحة.',
       addAdmin: 'إضافة شخص', adminName: 'اسمه', tempPassword: 'أعطه كلمة المرور هذه، وسيختار كلمته الخاصة عند أول دخول. لا تظهر إلا مرة واحدة.',
       you: 'أنت', timezone: 'المنطقة الزمنية', timezoneHint: 'تُرسل الرسائل بين الساعة 10:00 والساعة 21:00 بهذا التوقيت.', pending: 'لم يدخل بعد',
-      changePassword: 'تغيير كلمة المرور'
+      changePassword: 'تغيير كلمة المرور',
+      adjust: 'إضافة أو خصم', adjustHint: 'عملية شراء نسي الموظف تسجيلها، أو بادرة لطيفة، أو تصحيح. علامة الطرح تعني خصمًا. يرى العضو «تصحيح من المتجر»، ويبقى السبب هنا.',
+      adjustUnits: 'العدد (+ أو -)', reason: 'السبب', adjustBtn: 'تطبيق', adjusted: 'تم تحديث الرصيد',
+      k_adjust: 'تصحيح', k_welcome: 'هدية الترحيب', k_referral: 'مكافأة دعوة صديق', k_void: 'تراجع من الموظف', undoneTag: 'أُلغي',
+      moreRewards: 'مكافآت أخرى', moreRewardsHint: 'إلى جانب المكافأة أعلاه، اعرض مكافآت أخرى بأسعار مختلفة. يرى الموظف ما يكفيه رصيد البطاقة، وتعرض البطاقة القائمة كلها.',
+      onTheCard: 'على البطاقة', rewardName: 'المكافأة بالإنجليزية', rewardNameAr: 'المكافأة بالعربية', cost: 'السعر', addReward: 'إضافة مكافأة', saveReward: 'حفظ المكافأة',
+      gifts: 'الهدايا', giftsHint: 'كل منهما لا يتجاوز مكافأة كاملة، والصفر يوقفها. تُمنح مكافأة دعوة الصديق لكليهما بعد مرور 10 دقائق على أول عملية شراء للصديق، ولا يُكافأ العضو على أكثر من 10 أصدقاء في الشهر.',
+      welcomeGift: 'هدية ترحيب لكل عضو جديد', referralGift: 'ادعُ صديقًا: ما يحصل عليه كل منهما',
+      boosts: 'فترات المكافأة', boostsHint: 'لفترة محددة تكسب المشتريات أكثر: نقاط مضاعفة في عطلة نهاية الأسبوع، أو ثلاثة أضعاف على الإكسسوارات في العيد. 31 يومًا على الأكثر. أعلِم الأعضاء بعرض.',
+      boostName: 'الاسم بالإنجليزية', boostNameAr: 'الاسم بالعربية', multiplier: 'المضاعف', appliesTo: 'تنطبق على', everything: 'كل المشتريات',
+      starts: 'تبدأ', ends: 'تنتهي', startNow: 'فارغ: الآن', addBoost: 'جدولة فترة مكافأة', running: 'جارية', upcoming: 'قادمة', endBoost: 'إنهاؤها',
+      contact: 'كيف يتواصل معك العملاء', contactHint: 'تظهر في إشعار الخصوصية. اطلب من محاميك قراءة الإشعار قبل أول عميل.',
+      contactPhone: 'الهاتف', contactEmail: 'البريد الإلكتروني', contactAddress: 'العنوان', privacyPage: 'فتح إشعار الخصوصية',
+      friends: 'أصدقاء انضموا', friendsSub: '{n} اشتروا وكوفئوا', topInviters: 'أعضاء دعوا أصدقاءهم',
+      welcomeTile: 'هدايا الترحيب', rewardsGiven: 'المكافآت الممنوحة', boostResults: 'فترات المكافأة', boostedPurchases: 'مشتريات مضاعفة', undoneCol: 'أُلغي',
+      friendsCol: 'الأصدقاء',
     }
   }
 
@@ -479,6 +509,8 @@
           tile(t('redeemed'), fmtNum(r.rewards.redeemed), t('waiting', { n: fmtNum(r.rewards.waiting) })),
           tile(t('inWallet'), fmtNum(r.members.in_apple + r.members.in_google), t('inWalletSub', { a: fmtNum(r.members.in_apple), g: fmtNum(r.members.in_google) })),
           tile(t('offers'), fmtNum(r.members.offers), t('offersSub', { n: fmtNum(r.members.birthdays) })),
+          r.referrals.joined || S.merchant.referral_units ? tile(t('friends'), fmtNum(r.referrals.joined), t('friendsSub', { n: fmtNum(r.referrals.rewarded) })) : null,
+          r.welcome.members ? tile(t('welcomeTile'), fmtNum(r.welcome.members), t('earned', { n: fmtNum(r.welcome.units) })) : null,
           S.merchant.program === 'points' || v.amount_fils ? tile(t('spent'), fmtJod(v.amount_fils), t('earned', { n: fmtNum(v.units) })) : null),
         h('div', { class: 'panel' }, h('h2', null, t('perDay')), chart(r.daily),
           h('div', { class: 'legend' }, h('span', null, h('i', { style: { background: 'var(--bar)' } }), t('legendVisits')),
@@ -495,12 +527,24 @@
         kids.push(h('div', { class: 'panel' }, h('h2', null, t('byCategory')), table([t('category'), t('purchases'), t('amount'), t('units')],
           r.categories.map(function (c) { return h('tr', null, td(catName(c)), td(fmtNum(c.purchases), true), td(fmtJod(c.amount_fils), true), td(fmtNum(c.units), true)) }), [1, 2, 3])))
       }
-      var staffRows = r.staff.filter(function (s) { return s.visits || s.redemptions || !s.revoked }).map(function (s) {
-        return h('tr', null, td(s.label + (s.revoked ? ' (' + t('revoked') + ')' : '')), td(fmtNum(s.visits), true), td(fmtNum(s.redemptions), true), td(s.last_used_at ? fmtDateTime(s.last_used_at) : t('never'), true))
+      if (r.rewards.given.length > 1 || r.rewards.redeemed) {
+        kids.push(h('div', { class: 'panel' }, h('h2', null, t('rewardsGiven')), table([t('reward'), t('redeemed')],
+          r.rewards.given.map(function (g) { return h('tr', null, td(lang === 'ar' && g.name_ar ? g.name_ar : g.name), td(fmtNum(g.count), true)) }), [1])))
+      }
+      if (r.boosts.length) {
+        kids.push(h('div', { class: 'panel' }, h('h2', null, t('boostResults')), table([t('boosts'), t('when'), t('boostedPurchases')],
+          r.boosts.map(function (b) { return h('tr', null, td(b.label + ' ×' + b.multiplier + (b.cancelled ? ' (' + t('cancelled') + ')' : '')), td(fmtDateTime(b.starts_at) + ' → ' + fmtDateTime(b.ends_at), 'nowrap'), td(fmtNum(b.purchases), true)) }), [2])))
+      }
+      if (r.referrals.top.length) {
+        kids.push(h('div', { class: 'panel' }, h('h2', null, t('topInviters')), table([t('name'), t('friendsCol')],
+          r.referrals.top.map(function (x) { return h('tr', null, td(x.name), td(fmtNum(x.friends), true)) }), [1])))
+      }
+      var staffRows = r.staff.filter(function (s) { return s.visits || s.redemptions || s.undone || !s.revoked }).map(function (s) {
+        return h('tr', null, td(s.label + (s.revoked ? ' (' + t('revoked') + ')' : '')), td(fmtNum(s.visits), true), td(fmtNum(s.redemptions), true), td(fmtNum(s.undone), true), td(s.last_used_at ? fmtDateTime(s.last_used_at) : t('never'), true))
       })
-      if (r.unattributed_visits) staffRows.push(h('tr', null, td(h('span', { class: 'muted' }, t('noStaff'))), td(fmtNum(r.unattributed_visits), true), td(''), td('')))
+      if (r.unattributed_visits) staffRows.push(h('tr', null, td(h('span', { class: 'muted' }, t('noStaff'))), td(fmtNum(r.unattributed_visits), true), td(''), td(''), td('')))
       kids.push(h('div', { class: 'panel' }, h('h2', null, t('byStaff')),
-        staffRows.length ? table([t('staffKey'), t('visits'), t('redemptions'), t('lastUsed')], staffRows, [1, 2, 3]) : h('p', { class: 'empty' }, t('none'))))
+        staffRows.length ? table([t('staffKey'), t('visits'), t('redemptions'), t('undoneCol'), t('lastUsed')], staffRows, [1, 2, 3, 4]) : h('p', { class: 'empty' }, t('none'))))
       box.replaceChildren.apply(box, kids)
     }).catch(fail)
     return h('div', null, h('div', { class: 'head' }, h('div', { class: 'grow' }, h('h1', null, t('tabs_overview'))), seg), box)
@@ -508,6 +552,15 @@
 
   // ---------------------------------------------------------------------------------------------
   // Members
+
+  function pickName(o, en, ar) { return lang === 'ar' && o[ar] ? o[ar] : o[en] }
+  function historyWhat(l) {
+    if (l.kind === 'earn') return l.category ? pickName(l, 'category', 'category_ar') : t('earn')
+    if (l.kind === 'redeem') return t('redeem') + (l.reward ? ': ' + pickName(l, 'reward', 'reward_ar') : '')
+    if (l.kind === 'bonus') return l.note === 'referral' ? t('k_referral') : t('k_welcome')
+    if (l.kind === 'adjust') return t('k_adjust') + (l.note ? ': ' + l.note : '')
+    return t('k_void')
+  }
 
   var memberQuery = ''
   function membersView() {
@@ -551,9 +604,20 @@
       api('GET', 'members/' + serial).then(function (r) {
         var x = r.member
         var lines = r.history.map(function (l) {
-          var what = l.kind === 'earn' ? (l.category ? (lang === 'ar' && l.category_ar ? l.category_ar : l.category) : t('earn')) : t('redeem')
-          return h('tr', null, td(fmtDateTime(l.created_at), 'nowrap'), td(what), td((l.units > 0 ? '+' : '') + fmtNum(l.units), true), td(l.amount_fils ? fmtJod(l.amount_fils) : '', true))
+          var what = historyWhat(l)
+          if (l.voided_at) what += ' (' + t('undoneTag') + ')'
+          return h('tr', { class: l.voided_at ? 'muted' : null }, td(fmtDateTime(l.created_at), 'nowrap'), td(what), td((l.units > 0 ? '+' : '') + fmtNum(l.units), true), td(l.amount_fils ? fmtJod(l.amount_fils) : '', true))
         })
+        var units = h('input', { type: 'number', step: '1', dir: 'ltr' })
+        var reason = h('input', { maxlength: '120' })
+        var abtn = h('button', { type: 'submit' }, t('adjustBtn'))
+        var adjustForm = h('form', {
+          class: 'detail', onsubmit: function (e) {
+            e.preventDefault()
+            act(abtn, function () { return api('POST', 'members/' + x.serial + '/adjust', { units: Number(units.value), note: reason.value }) }, t('adjusted')).then(function (res) { if (res) { showMember(x.serial); fetchPage(false) } })
+          }
+        }, h('h3', { style: { marginTop: '0' } }, t('adjust')), h('p', { class: 'muted small' }, t('adjustHint')),
+          h('div', { class: 'two' }, field(t('adjustUnits'), units), field(t('reason'), reason)), h('div', { class: 'actions' }, abtn))
         var msgs = r.messages.map(function (m) { return h('tr', null, td(fmtDateTime(m.created_at), 'nowrap'), td(h('span', { class: 'badge' }, t('kind_' + m.kind))), td(h('span', { dir: 'auto' }, m.text), 'text')) })
         detail.replaceChildren(h('div', { class: 'panel' },
           h('div', { class: 'head' }, h('div', { class: 'grow' }, h('h2', null, x.member_name)),
@@ -572,6 +636,7 @@
           lines.length ? table(['', '', t('units'), t('amount')], lines, [2, 3]) : h('p', { class: 'empty' }, t('none')),
           h('h3', null, t('messagesSent')),
           msgs.length ? table(['', '', t('message')], msgs) : h('p', { class: 'empty' }, t('none')),
+          adjustForm,
           h('div', { class: 'detail' }, h('p', { class: 'muted small' }, t('deleteHint')),
             armed(t('deleteMember'), function (b) {
               act(b, function () { return api('DELETE', 'members/' + x.serial) }, t('deleted')).then(function () { detail.replaceChildren(); fetchPage(false) })
@@ -775,7 +840,92 @@
     })
     var catPanel = h('div', { class: 'panel' }, h('h2', null, t('categories')), h('p', { class: 'muted small' }, t('categoriesHint')),
       rows.length ? table([t('catName'), t('catNameAr'), t('earnsBy'), ''], rows) : null, catForm)
-    return h('div', null, h('div', { class: 'head' }, h('div', { class: 'grow' }, h('h1', null, t('tabs_earning')))), programPanel, catPanel)
+    return h('div', null, h('div', { class: 'head' }, h('div', { class: 'grow' }, h('h1', null, t('tabs_earning')))), programPanel, moreRewardsPanel(), giftsPanel(), catPanel, boostsPanel())
+  }
+
+  function unitName() { return S.merchant.program === 'stamps' ? t('stamps') : t('points') }
+
+  function moreRewardsPanel() {
+    var m = S.merchant
+    var editing = null
+    var nm = h('input', { dir: 'ltr' })
+    var nmAr = h('input', { dir: 'rtl' })
+    var cost = h('input', { type: 'number', min: '1', step: '1', dir: 'ltr' })
+    var btn = h('button', { type: 'submit' }, t('addReward'))
+    var cancel = h('button', { type: 'button', class: 'secondary', hidden: true, onclick: function () { renderApp() } }, t('cancel'))
+    var form = h('form', {
+      onsubmit: function (e) {
+        e.preventDefault()
+        var body = { name: nm.value, name_ar: nmAr.value, cost: Number(cost.value) }
+        act(btn, function () { return editing ? api('PUT', 'rewards/' + editing, body) : api('POST', 'rewards', body) }).then(function (r) { if (r) renderApp() })
+      }
+    }, h('div', { class: 'two' }, field(t('rewardName'), nm), field(t('rewardNameAr'), nmAr, t('optional'))),
+      field(t('cost') + ' (' + unitName() + ')', cost), h('div', { class: 'actions' }, btn, cancel))
+    var rows = [h('tr', null, td(pickName(m, 'reward_text', 'reward_text_ar')), td(fmtNum(m.reward_threshold), true), td(h('span', { class: 'badge' }, t('onTheCard'))))]
+      .concat(S.rewards.map(function (r) {
+        return h('tr', null, td(pickName(r, 'name', 'name_ar')), td(fmtNum(r.cost), true),
+          td(h('span', { class: 'actions', style: { marginTop: '0' } },
+            h('button', {
+              type: 'button', class: 'secondary small', onclick: function () {
+                editing = r.id
+                nm.value = r.name
+                nmAr.value = r.name_ar || ''
+                cost.value = String(r.cost)
+                btn.textContent = t('saveReward')
+                cancel.hidden = false
+                form.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              }
+            }, t('edit')),
+            armed(t('remove'), function (b) { act(b, function () { return api('DELETE', 'rewards/' + r.id) }).then(renderApp) }))))
+      }))
+    return h('div', { class: 'panel' }, h('h2', null, t('moreRewards')), h('p', { class: 'muted small' }, t('moreRewardsHint')),
+      table([t('reward'), t('cost'), ''], rows, [1]), form)
+  }
+
+  function giftsPanel() {
+    var m = S.merchant
+    var welcome = h('input', { type: 'number', min: '0', step: '1', dir: 'ltr', value: String(m.welcome_units) })
+    var friend = h('input', { type: 'number', min: '0', step: '1', dir: 'ltr', value: String(m.referral_units) })
+    var btn = h('button', { type: 'submit' }, t('save'))
+    return h('form', {
+      class: 'panel', onsubmit: function (e) {
+        e.preventDefault()
+        act(btn, function () { return api('PUT', 'merchant', { welcome_units: Number(welcome.value), referral_units: Number(friend.value) }) })
+      }
+    }, h('h2', null, t('gifts')), h('p', { class: 'muted small' }, t('giftsHint')),
+      h('div', { class: 'two' }, field(t('welcomeGift') + ' (' + unitName() + ')', welcome), field(t('referralGift') + ' (' + unitName() + ')', friend)),
+      h('div', { class: 'actions' }, btn))
+  }
+
+  function boostsPanel() {
+    var names = pair(t('boostName'), '', t('boostNameAr'), '')
+    var mult = h('select', { dir: 'ltr' }, ['1.5', '2', '3'].map(function (x) { return h('option', { value: x }, '×' + x) }))
+    mult.value = '2'
+    var cat = h('select', null, h('option', { value: '' }, t('everything')), S.categories.map(function (c) { return h('option', { value: String(c.id) }, catName(c)) }))
+    var starts = h('input', { type: 'datetime-local' })
+    var ends = h('input', { type: 'datetime-local', required: true })
+    var btn = h('button', { type: 'submit' }, t('addBoost'))
+    var now = Date.now()
+    var rows = S.boosts.map(function (b) {
+      var on = b.starts_at <= now
+      return h('tr', null, td(pickName(b, 'label', 'label_ar') + ' ×' + b.multiplier), td(b.category || t('everything')),
+        td(fmtDateTime(b.starts_at) + ' → ' + fmtDateTime(b.ends_at), 'nowrap'),
+        td(h('span', { class: 'badge' + (on ? ' on' : '') }, on ? t('running') : t('upcoming'))), td(fmtNum(b.purchases), true),
+        td(armed(t('endBoost'), function (x) { act(x, function () { return api('DELETE', 'boosts/' + b.id) }).then(renderApp) })))
+    })
+    return h('div', { class: 'panel' }, h('h2', null, t('boosts')), h('p', { class: 'muted small' }, t('boostsHint')),
+      rows.length ? table([t('boosts'), t('appliesTo'), t('when'), '', t('boostedPurchases'), ''], rows, [4]) : null,
+      h('form', {
+        onsubmit: function (e) {
+          e.preventDefault()
+          var body = {
+            label: names.en(), label_ar: names.ar(), multiplier: Number(mult.value), category_id: cat.value ? Number(cat.value) : null,
+            starts: starts.value ? starts.value.replace('T', ' ') : null, ends: ends.value.replace('T', ' ')
+          }
+          act(btn, function () { return api('POST', 'boosts', body) }).then(function (r) { if (r) renderApp() })
+        }
+      }, names, h('div', { class: 'two' }, field(t('multiplier'), mult), field(t('appliesTo'), cat)),
+        h('div', { class: 'two' }, field(t('starts'), starts, t('startNow')), field(t('ends'), ends)), h('div', { class: 'actions' }, btn)))
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -918,6 +1068,22 @@
   // ---------------------------------------------------------------------------------------------
   // Settings
 
+  function contactPanel() {
+    var m = S.merchant
+    var phone = h('input', { type: 'tel', dir: 'ltr', value: m.contact_phone || '' })
+    var email = h('input', { type: 'email', dir: 'ltr', value: m.contact_email || '' })
+    var address = h('input', { value: m.contact_address || '' })
+    var btn = h('button', { type: 'submit' }, t('save'))
+    return h('form', {
+      class: 'panel', onsubmit: function (e) {
+        e.preventDefault()
+        act(btn, function () { return api('PUT', 'merchant', { contact_phone: phone.value, contact_email: email.value, contact_address: address.value }) })
+      }
+    }, h('h2', null, t('contact')), h('p', { class: 'muted small' }, t('contactHint')),
+      h('div', { class: 'two' }, field(t('contactPhone'), phone), field(t('contactEmail'), email)), field(t('contactAddress'), address),
+      h('div', { class: 'actions' }, btn, h('a', { class: 'btn secondary', href: S.links.privacy, target: '_blank', rel: 'noopener' }, t('privacyPage'))))
+  }
+
   var shownAdmin = null
   function settingsView() {
     var zones = []
@@ -939,6 +1105,7 @@
     shownAdmin = null
     return h('div', null, h('div', { class: 'head' }, h('div', { class: 'grow' }, h('h1', null, t('tabs_settings')))), reveal,
       h('div', { class: 'panel' }, h('h2', null, t('account')), h('p', { dir: 'ltr', class: 'muted' }, S.admin.email), h('h3', null, t('changePassword')), passwordForm()),
+      contactPanel(),
       h('div', { class: 'panel' }, h('h2', null, t('admins')), h('p', { class: 'muted small' }, t('adminsHint')),
         table([t('email'), t('adminName'), t('lastUsed'), ''], rows),
         h('form', {

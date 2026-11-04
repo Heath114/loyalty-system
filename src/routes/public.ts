@@ -269,7 +269,7 @@ body{margin:0;background:#fff;color:#111;font:16px/1.4 -apple-system,system-ui,T
           ${boostLines.map((b) => html`<p class="banner">${b}</p>`)}
           <div class="card">
             <p class="muted">${m.program === 'stamps' ? w(lang, 'stamps') : w(lang, 'points')}</p>
-            <p class="big" dir="ltr" style="text-align:start">${m.program === 'stamps' ? `${Math.min(card.balance, m.reward_threshold)} / ${m.reward_threshold}` : card.balance}</p>
+            <p class="big"><span dir="ltr">${m.program === 'stamps' ? `${Math.min(card.balance, m.reward_threshold)} / ${m.reward_threshold}` : card.balance}</span></p>
             <p>${ready > 0
               ? html`<span class="ok">${w(lang, 'rewardReady', { r: reward })}</span>`
               : html`${w(lang, 'rewardLine', { r: reward })} · <span class="muted">${w(lang, 'toGo', { n: left, u: unitWord(lang, m, left) })}</span>`}</p>

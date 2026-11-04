@@ -34,6 +34,8 @@ export function createApp(deps: Deps) {
     c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
   })
   app.get('/health', (c) => c.json({ ok: true }))
+  // Browsers ask for it on every page; answering saves a 404 in every log.
+  app.get('/favicon.ico', (c) => c.body(null, 204, { 'Cache-Control': 'public, max-age=86400' }))
   app.route('/wallet', walletRoutes(deps))
   app.route('/', adminRoutes(deps))
   app.route('/', staffRoutes(deps))

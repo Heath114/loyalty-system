@@ -6,7 +6,7 @@ type Body = HtmlEscapedString | Promise<HtmlEscapedString>
 const CSS = `
 :root{--bg:#f6f6f4;--fg:#111;--muted:#666;--card:#fff;--line:#e3e3df;--accent:#111}
 @media (prefers-color-scheme:dark){:root{--bg:#111;--fg:#f2f2f2;--muted:#9a9a9a;--card:#1b1b1b;--line:#2c2c2c;--accent:#f2f2f2}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 -apple-system,system-ui,"Segoe UI",Tahoma,sans-serif}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 -apple-system,system-ui,"Segoe UI",Tahoma,sans-serif}
 main{max-width:440px;margin:0 auto;padding:24px 16px 48px}
 h1{font-size:24px;margin:8px 0 4px}p{margin:8px 0}.muted{color:var(--muted)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin:16px 0}
