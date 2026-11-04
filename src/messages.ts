@@ -303,10 +303,10 @@ export function due(db: DB, now = Date.now()): Outgoing[] {
       .all(merchant.id) as unknown as Reminder[]
     const purchases = db.prepare(
       `SELECT c.*, l.id AS purchase_id FROM ledger l JOIN cards c ON c.id = l.card_id
-       WHERE l.merchant_id = ? AND l.category_id = ? AND l.kind = 'earn' AND l.created_at <= ? AND l.created_at > ?
+       WHERE l.merchant_id = ? AND l.category_id = ? AND l.kind = 'earn' AND l.voided_at IS NULL AND l.created_at <= ? AND l.created_at > ?
          AND c.marketing_consent = 1
          AND NOT EXISTS (SELECT 1 FROM ledger later WHERE later.card_id = l.card_id AND later.category_id = l.category_id
-                           AND later.kind = 'earn' AND later.id > l.id)
+                           AND later.kind = 'earn' AND later.voided_at IS NULL AND later.id > l.id)
          AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.card_id = c.id AND m.dedupe_key = ? || l.id)
        ORDER BY l.created_at, l.id`,
     )
@@ -339,7 +339,8 @@ export function due(db: DB, now = Date.now()): Outgoing[] {
       const cards = db
         .prepare(
           `SELECT * FROM (
-             SELECT c.*, COALESCE((SELECT MAX(l.created_at) FROM ledger l WHERE l.card_id = c.id), c.created_at) AS last_seen
+             SELECT c.*, COALESCE((SELECT MAX(l.created_at) FROM ledger l WHERE l.card_id = c.id AND l.kind IN ('earn', 'redeem')
+                                     AND l.voided_at IS NULL), c.created_at) AS last_seen
              FROM cards c WHERE c.merchant_id = ? AND c.marketing_consent = 1
            ) AS x
            WHERE x.last_seen <= ?

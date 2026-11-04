@@ -257,6 +257,38 @@ const MIGRATIONS = [
   );
   CREATE INDEX admin_sessions_admin ON admin_sessions(admin_id);
   `,
+  // 6: mistakes and gifts. The ledger is rebuilt (SQLite cannot widen a CHECK) to take undone rows,
+  // manual adjustments and bonuses, still append-only: an undo adds a 'void' row and marks the one it
+  // takes back, it never deletes. SUM(units) per card stays equal to the card's balance.
+  `
+  CREATE TABLE ledger_v6 (
+    id              INTEGER PRIMARY KEY,
+    merchant_id     INTEGER NOT NULL REFERENCES merchants(id),
+    card_id         INTEGER NOT NULL REFERENCES cards(id),
+    kind            TEXT NOT NULL CHECK (kind IN ('earn', 'redeem', 'adjust', 'bonus', 'void')),
+    units           INTEGER NOT NULL,
+    amount_fils     INTEGER,
+    category_id     INTEGER REFERENCES categories(id),
+    staff_id        INTEGER REFERENCES staff(id),
+    admin_id        INTEGER REFERENCES admins(id),
+    idempotency_key TEXT,
+    -- On an earn or redeem that was undone: when.
+    voided_at       INTEGER,
+    -- void: the row it takes back. bonus: the friend's card, for a referral bonus.
+    ref_id          INTEGER,
+    -- adjust: the reason the merchant gave. bonus: 'welcome' or 'referral'.
+    note            TEXT,
+    created_at      INTEGER NOT NULL,
+    UNIQUE (merchant_id, idempotency_key)
+  );
+  INSERT INTO ledger_v6 (id, merchant_id, card_id, kind, units, amount_fils, category_id, staff_id, idempotency_key, created_at)
+    SELECT id, merchant_id, card_id, kind, units, amount_fils, category_id, staff_id, idempotency_key, created_at FROM ledger;
+  DROP TABLE ledger;
+  ALTER TABLE ledger_v6 RENAME TO ledger;
+  CREATE INDEX ledger_card ON ledger(card_id);
+  CREATE INDEX ledger_category ON ledger(merchant_id, category_id, created_at);
+  CREATE INDEX ledger_merchant_time ON ledger(merchant_id, created_at);
+  `,
 ]
 
 /** opts.version stops the migrations at that version: only tests use it, to check an upgrade keeps data. */

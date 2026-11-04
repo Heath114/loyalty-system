@@ -78,7 +78,8 @@ export interface Report {
   rewards: { redeemed: number; waiting: number }
   daily: { date: string; joined: number; visits: number }[]
   categories: { id: number; name: string; name_ar: string | null; archived: boolean; purchases: number; amount_fils: number; units: number }[]
-  staff: { id: number; label: string; revoked: boolean; last_used_at: number | null; visits: number; redemptions: number }[]
+  /** undone: entries this key took back within the undo window. Many is worth a look. */
+  staff: { id: number; label: string; revoked: boolean; last_used_at: number | null; visits: number; redemptions: number; undone: number }[]
   /** Visits recorded without a staff key (command line, imports). */
   unattributed_visits: number
   messages: MessageResult[]
@@ -105,20 +106,20 @@ export function report(db: DB, m: Merchant, p: Period): Report {
   )
   const visits = one(
     `SELECT COUNT(*) AS count, COUNT(DISTINCT card_id) AS visitors, COALESCE(SUM(units), 0) AS units, COALESCE(SUM(amount_fils), 0) AS amount
-     FROM ledger WHERE merchant_id = ? AND kind = 'earn' AND ${inPeriod}`,
+     FROM ledger WHERE merchant_id = ? AND kind = 'earn' AND voided_at IS NULL AND ${inPeriod}`,
     m.id, p.from, p.to,
   )
   const repeat = one(
-    `SELECT COUNT(*) AS n FROM (SELECT card_id FROM ledger WHERE merchant_id = ? AND kind = 'earn' AND ${inPeriod}
+    `SELECT COUNT(*) AS n FROM (SELECT card_id FROM ledger WHERE merchant_id = ? AND kind = 'earn' AND voided_at IS NULL AND ${inPeriod}
        GROUP BY card_id HAVING COUNT(*) >= 2)`,
     m.id, p.from, p.to,
   )
   const returning = one(
     `SELECT COUNT(DISTINCT l.card_id) AS n FROM ledger l JOIN cards c ON c.id = l.card_id
-     WHERE l.merchant_id = ? AND l.kind = 'earn' AND l.created_at >= ? AND l.created_at < ? AND c.created_at < ?`,
+     WHERE l.merchant_id = ? AND l.kind = 'earn' AND l.voided_at IS NULL AND l.created_at >= ? AND l.created_at < ? AND c.created_at < ?`,
     m.id, p.from, p.to, p.from,
   )
-  const redeemed = one(`SELECT COUNT(*) AS n FROM ledger WHERE merchant_id = ? AND kind = 'redeem' AND ${inPeriod}`, m.id, p.from, p.to)
+  const redeemed = one(`SELECT COUNT(*) AS n FROM ledger WHERE merchant_id = ? AND kind = 'redeem' AND voided_at IS NULL AND ${inPeriod}`, m.id, p.from, p.to)
   // Integer division on two INTEGER columns: rewards a member could claim today.
   const waiting = one(
     `SELECT COALESCE(SUM(c.balance / k.reward_threshold), 0) AS n FROM cards c JOIN merchants k ON k.id = c.merchant_id
@@ -131,7 +132,7 @@ export function report(db: DB, m: Merchant, p: Period): Report {
     const i = dayIndex(p, n(r.created_at))
     if (i >= 0) daily[i].joined++
   }
-  for (const r of all(`SELECT created_at FROM ledger WHERE merchant_id = ? AND kind = 'earn' AND ${inPeriod}`, m.id, p.from, p.to)) {
+  for (const r of all(`SELECT created_at FROM ledger WHERE merchant_id = ? AND kind = 'earn' AND voided_at IS NULL AND ${inPeriod}`, m.id, p.from, p.to)) {
     const i = dayIndex(p, n(r.created_at))
     if (i >= 0) daily[i].visits++
   }
@@ -139,7 +140,8 @@ export function report(db: DB, m: Merchant, p: Period): Report {
   const categories = all(
     `SELECT k.id, k.name, k.name_ar, k.archived_at, COUNT(l.id) AS purchases, COALESCE(SUM(l.amount_fils), 0) AS amount,
        COALESCE(SUM(l.units), 0) AS units
-     FROM categories k LEFT JOIN ledger l ON l.category_id = k.id AND l.kind = 'earn' AND l.created_at >= ? AND l.created_at < ?
+     FROM categories k LEFT JOIN ledger l ON l.category_id = k.id AND l.kind = 'earn' AND l.voided_at IS NULL
+       AND l.created_at >= ? AND l.created_at < ?
      WHERE k.merchant_id = ? GROUP BY k.id ORDER BY k.sort, k.id`,
     p.from, p.to, m.id,
   )
@@ -150,17 +152,17 @@ export function report(db: DB, m: Merchant, p: Period): Report {
     }))
 
   const staff = all(
-    `SELECT s.id, s.label, s.revoked_at, s.last_used_at, COALESCE(SUM(l.kind = 'earn'), 0) AS visits,
-       COALESCE(SUM(l.kind = 'redeem'), 0) AS redemptions
+    `SELECT s.id, s.label, s.revoked_at, s.last_used_at, COALESCE(SUM(l.kind = 'earn' AND l.voided_at IS NULL), 0) AS visits,
+       COALESCE(SUM(l.kind = 'redeem' AND l.voided_at IS NULL), 0) AS redemptions, COALESCE(SUM(l.kind = 'void'), 0) AS undone
      FROM staff s LEFT JOIN ledger l ON l.staff_id = s.id AND l.created_at >= ? AND l.created_at < ?
      WHERE s.merchant_id = ? GROUP BY s.id ORDER BY visits DESC, s.id`,
     p.from, p.to, m.id,
   ).map((r) => ({
     id: n(r.id), label: String(r.label), revoked: r.revoked_at != null, last_used_at: r.last_used_at == null ? null : n(r.last_used_at),
-    visits: n(r.visits), redemptions: n(r.redemptions),
+    visits: n(r.visits), redemptions: n(r.redemptions), undone: n(r.undone),
   }))
   const unattributed = one(
-    `SELECT COUNT(*) AS n FROM ledger WHERE merchant_id = ? AND kind = 'earn' AND staff_id IS NULL AND ${inPeriod}`,
+    `SELECT COUNT(*) AS n FROM ledger WHERE merchant_id = ? AND kind = 'earn' AND voided_at IS NULL AND staff_id IS NULL AND ${inPeriod}`,
     m.id, p.from, p.to,
   )
 
@@ -188,7 +190,7 @@ export function messageResults(db: DB, m: Merchant, p: Period): MessageResult[] 
   const rows = db
     .prepare(
       `SELECT m.kind, m.campaign_id, m.reminder_id, COUNT(*) AS sent,
-         COALESCE(SUM(EXISTS (SELECT 1 FROM ledger l WHERE l.card_id = m.card_id AND l.kind = 'earn'
+         COALESCE(SUM(EXISTS (SELECT 1 FROM ledger l WHERE l.card_id = m.card_id AND l.kind = 'earn' AND l.voided_at IS NULL
                                 AND l.created_at > m.created_at AND l.created_at <= m.created_at + ?)), 0) AS came_back
        FROM messages m WHERE m.merchant_id = ? AND m.created_at >= ? AND m.created_at < ?
        GROUP BY m.kind, m.campaign_id, m.reminder_id ORDER BY MIN(m.created_at)`,
@@ -231,8 +233,8 @@ export interface MemberRow {
 
 const MEMBER_COLUMNS = `c.serial, c.member_name, c.member_phone, c.member_email, c.birthday, c.marketing_consent, c.balance,
   c.lifetime_earned, c.rewards_redeemed, c.lang, c.created_at,
-  (SELECT COUNT(*) FROM ledger l WHERE l.card_id = c.id AND l.kind = 'earn') AS visits,
-  (SELECT MAX(l.created_at) FROM ledger l WHERE l.card_id = c.id AND l.kind = 'earn') AS last_visit,
+  (SELECT COUNT(*) FROM ledger l WHERE l.card_id = c.id AND l.kind = 'earn' AND l.voided_at IS NULL) AS visits,
+  (SELECT MAX(l.created_at) FROM ledger l WHERE l.card_id = c.id AND l.kind = 'earn' AND l.voided_at IS NULL) AS last_visit,
   EXISTS (SELECT 1 FROM pass_registrations r WHERE r.serial = c.serial) AS in_apple,
   c.google_object_at IS NOT NULL AS in_google`
 

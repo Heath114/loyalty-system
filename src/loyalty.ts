@@ -333,6 +333,80 @@ export function redeem(
   })
 }
 
+/** How long staff have to take back a stamp, points or a reward they recorded by mistake. */
+export const UNDO_WINDOW_MS = 10 * 60_000
+
+export interface Undo extends Movement {
+  /** What was taken back. */
+  undone: { kind: 'earn' | 'redeem'; units: number }
+}
+
+/**
+ * Takes back the card's latest stamp, points or reward, if that staff key recorded it in the last
+ * 10 minutes: the "I tapped the wrong customer" button. The row is marked and a 'void' row reverses
+ * it; nothing is deleted. Anything older, or recorded by someone else, is the merchant's to adjust.
+ */
+export function undoLast(
+  db: DB, merchant: Merchant, serial: string,
+  opts: { staffId: number | null; idempotencyKey?: string; now?: number },
+): Undo {
+  return tx(db, () => {
+    const prior = existing(db, merchant.id, opts.idempotencyKey)
+    if (prior) {
+      const r = replay(db, prior, serial)
+      return { ...r, undone: { kind: -prior.units > 0 ? 'earn' : 'redeem', units: -prior.units } as Undo['undone'] }
+    }
+    const card = merchantCard(db, merchant.id, serial)
+    const last = db
+      .prepare("SELECT * FROM ledger WHERE card_id = ? AND kind IN ('earn', 'redeem') AND voided_at IS NULL ORDER BY id DESC LIMIT 1")
+      .get(card.id) as { id: number; kind: 'earn' | 'redeem'; units: number; staff_id: number | null; created_at: number } | undefined
+    const clock = opts.now ?? Date.now()
+    if (!last || last.staff_id !== opts.staffId || last.created_at < clock - UNDO_WINDOW_MS) {
+      throw new LoyaltyError('Nothing to undo: only your own last entry on this card, within 10 minutes', 409)
+    }
+    const units = -last.units
+    if (card.balance + units < 0) throw new LoyaltyError('The card no longer has those points to take back', 409)
+    const now = Math.max(clock, card.updated_at + 1)
+    db.prepare('UPDATE ledger SET voided_at = ? WHERE id = ?').run(now, last.id)
+    db.prepare(
+      `INSERT INTO ledger (merchant_id, card_id, kind, units, staff_id, idempotency_key, ref_id, created_at)
+       VALUES (?, ?, 'void', ?, ?, ?, ?, ?)`,
+    ).run(merchant.id, card.id, units, opts.staffId, opts.idempotencyKey ?? null, last.id, now)
+    db.prepare(
+      `UPDATE cards SET balance = balance + ?, lifetime_earned = lifetime_earned - ?, rewards_redeemed = rewards_redeemed - ?,
+         updated_at = ? WHERE id = ?`,
+    ).run(units, last.kind === 'earn' ? last.units : 0, last.kind === 'redeem' ? 1 : 0, now, card.id)
+    return { card: merchantCard(db, merchant.id, serial), units, replayed: false, undone: { kind: last.kind, units: last.units } }
+  })
+}
+
+/**
+ * The merchant adds or takes away stamps or points by hand, with a reason: a purchase staff forgot to
+ * record, a goodwill gesture, a correction. Not a visit, so it moves no report and no win-back clock.
+ */
+export function adjust(db: DB, merchant: Merchant, serial: string, opts: { units: number; note: string; adminId?: number | null }): Movement {
+  const units = Number(opts.units)
+  if (!Number.isInteger(units) || units === 0 || Math.abs(units) > 1_000_000) throw new LoyaltyError('Enter a whole number to add, or a negative one to take away')
+  const note = String(opts.note ?? '').trim()
+  if (!note || note.length > 120) throw new LoyaltyError('Write the reason, up to 120 characters')
+  return tx(db, () => {
+    const card = merchantCard(db, merchant.id, serial)
+    if (card.balance + units < 0) throw new LoyaltyError(`The card has only ${card.balance}`, 409)
+    const now = Math.max(Date.now(), card.updated_at + 1)
+    db.prepare(
+      "INSERT INTO ledger (merchant_id, card_id, kind, units, admin_id, note, created_at) VALUES (?, ?, 'adjust', ?, ?, ?, ?)",
+    ).run(merchant.id, card.id, units, opts.adminId ?? null, note, now)
+    db.prepare('UPDATE cards SET balance = balance + ?, updated_at = ? WHERE id = ?').run(units, now, card.id)
+    return { card: merchantCard(db, merchant.id, serial), units, replayed: false }
+  })
+}
+
+/** A reward became ready with this change: the balance crossed a multiple of the threshold upwards. */
+export function crossedReward(merchant: Merchant, balanceAfter: number, units: number): boolean {
+  const t = merchant.reward_threshold
+  return units > 0 && Math.floor(balanceAfter / t) > Math.floor((balanceAfter - units) / t)
+}
+
 export const DELETED_NAME = 'Deleted member'
 
 /**
@@ -358,15 +432,26 @@ export function rewardsAvailable(merchant: Merchant, card: Card): number {
   return Math.floor(card.balance / merchant.reward_threshold)
 }
 
-export function history(db: DB, card: Card, limit = 20) {
+export interface HistoryRow {
+  kind: 'earn' | 'redeem' | 'adjust' | 'bonus' | 'void'
+  units: number
+  amount_fils: number | null
+  created_at: number
+  category: string | null
+  category_ar: string | null
+  /** Set on an earn or redeem that was undone. */
+  voided_at: number | null
+  /** adjust: the reason; bonus: 'welcome' or 'referral'. */
+  note: string | null
+}
+
+export function history(db: DB, card: Card, limit = 20): HistoryRow[] {
   return db
     .prepare(
-      `SELECT l.kind, l.units, l.amount_fils, l.created_at, c.name AS category, c.name_ar AS category_ar
+      `SELECT l.kind, l.units, l.amount_fils, l.created_at, c.name AS category, c.name_ar AS category_ar, l.voided_at, l.note
        FROM ledger l LEFT JOIN categories c ON c.id = l.category_id WHERE l.card_id = ? ORDER BY l.id DESC LIMIT ?`,
     )
-    .all(card.id, limit) as {
-    kind: string; units: number; amount_fils: number | null; created_at: number; category: string | null; category_ar: string | null
-  }[]
+    .all(card.id, limit) as unknown as HistoryRow[]
 }
 
 export interface Location {

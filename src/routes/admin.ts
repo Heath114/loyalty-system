@@ -8,14 +8,15 @@ import {
   MIN_PASSWORD, parseLatLng, removeImage, revokeStaff, sessionAdmin, setImage, staffList, updateMerchant, type Admin,
 } from '../admin.ts'
 import {
-  addLocation, archiveCategory, categories, createCategory, deleteMember, locations, LoyaltyError, MAX_CATEGORIES, MAX_LOCATIONS,
+  addLocation, adjust, archiveCategory, categories, createCategory, crossedReward, deleteMember, locations, LoyaltyError, MAX_CATEGORIES,
+  MAX_LOCATIONS,
   merchantById, removeLocation, updateCategory, type Merchant,
 } from '../loyalty.ts'
 import {
   campaigns, cancelCampaign, createCampaign, createReminder, localToEpoch, MAX_PER_30_DAYS, MAX_PER_DAY, MAX_REMINDERS, MAX_TEXT,
   reminders, removeReminder, SEND_HOURS, setTrigger, triggers, updateReminder, type TriggerKind,
 } from '../messages.ts'
-import { cardDeleted } from '../notify.ts'
+import { cardChanged, cardDeleted } from '../notify.ts'
 import { merchantImage } from '../pass/build.ts'
 import { checkDays, lastDays, member, members, membersCsv, report } from '../reports.ts'
 
@@ -216,6 +217,15 @@ export function adminRoutes(deps: Deps) {
     })
   })
   app.get('/api/admin/members/:serial', (c) => c.json(member(db, c.get('merchant'), c.req.param('serial'))))
+  /** Stamps or points added or taken away by hand, with the reason. The card updates in the wallet. */
+  app.post('/api/admin/members/:serial/adjust', async (c) => {
+    const body = await c.req.json<{ units?: number; note?: string }>()
+    const m = c.get('merchant')
+    const serial = c.req.param('serial').replace(/[\s-]/g, '').toUpperCase()
+    const r = adjust(db, m, serial, { units: Number(body.units), note: String(body.note ?? ''), adminId: c.get('admin').id })
+    cardChanged(db, deps, r.card.serial, { rewardReady: crossedReward(m, r.card.balance, r.units) }).catch((e) => console.error('push failed', e))
+    return c.json({ ok: true, balance: r.card.balance })
+  })
   /** A member asked to be deleted. The card is voided in their wallet, without holding up the answer. */
   app.delete('/api/admin/members/:serial', (c) => {
     const serial = c.req.param('serial').replace(/[\s-]/g, '').toUpperCase()

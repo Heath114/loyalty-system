@@ -5,7 +5,8 @@ import { createMiddleware } from 'hono/factory'
 import { raw } from 'hono/html'
 import type { Deps } from '../app.ts'
 import {
-  categories, earn, history, LoyaltyError, merchantById, merchantCard, redeem, rewardsAvailable, type Card, type Merchant,
+  categories, crossedReward, earn, history, LoyaltyError, merchantById, merchantCard, redeem, rewardsAvailable, undoLast, type Card,
+  type Merchant,
 } from '../loyalty.ts'
 import { cardChanged } from '../notify.ts'
 import { parseBarcode, sha256 } from '../tokens.ts'
@@ -122,10 +123,17 @@ export function staffRoutes(deps: Deps) {
     const r = earn(db, m, String(body.serial ?? ''), {
       amountFils: body.amountFils ?? null, categoryId: body.categoryId ?? null, staffId: c.get('staffId'), idempotencyKey: body.requestId,
     })
-    // A reward has just become ready when this purchase crossed a threshold.
-    const t = m.reward_threshold
-    if (!r.replayed) pushUpdate(r.card.serial, Math.floor(r.card.balance / t) > Math.floor((r.card.balance - r.units) / t))
+    if (!r.replayed) pushUpdate(r.card.serial, crossedReward(m, r.card.balance, r.units))
     return c.json({ card: summary(m, r.card), units: r.units, replayed: r.replayed })
+  })
+
+  /** Takes back this key's last entry on the card, within 10 minutes. */
+  app.post('/api/staff/undo', async (c) => {
+    const body = await c.req.json<{ serial?: string; requestId?: string }>()
+    const m = c.get('merchant')
+    const r = undoLast(db, m, String(body.serial ?? ''), { staffId: c.get('staffId'), idempotencyKey: body.requestId })
+    if (!r.replayed) pushUpdate(r.card.serial)
+    return c.json({ card: summary(m, r.card), units: r.units, undone: r.undone, replayed: r.replayed })
   })
 
   app.post('/api/staff/redeem', async (c) => {
