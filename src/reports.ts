@@ -82,7 +82,9 @@ export interface Report {
   categories: { id: number; name: string; name_ar: string | null; archived: boolean; purchases: number; amount_fils: number; units: number }[]
   /** undone: entries this key took back within the undo window. Many is worth a look. */
   staff: { id: number; label: string; revoked: boolean; last_used_at: number | null; visits: number; redemptions: number; undone: number }[]
-  /** Visits recorded without a staff key (command line, imports). */
+  /** Connected systems (UniDash, a till) recording visits through the API, each by its key. */
+  systems: { id: number; label: string; revoked: boolean; last_used_at: number | null; visits: number; redemptions: number; reversed: number }[]
+  /** Visits recorded without a staff key or a system's key (command line, imports). */
   unattributed_visits: number
   messages: MessageResult[]
   referrals: ReferralStats
@@ -168,8 +170,19 @@ export function report(db: DB, m: Merchant, p: Period): Report {
     id: n(r.id), label: String(r.label), revoked: r.revoked_at != null, last_used_at: r.last_used_at == null ? null : n(r.last_used_at),
     visits: n(r.visits), redemptions: n(r.redemptions), undone: n(r.undone),
   }))
+  const systems = all(
+    `SELECT k.id, k.label, k.revoked_at, k.last_used_at, COALESCE(SUM(l.kind = 'earn' AND l.voided_at IS NULL), 0) AS visits,
+       COALESCE(SUM(l.kind = 'redeem' AND l.voided_at IS NULL), 0) AS redemptions, COALESCE(SUM(l.kind = 'void'), 0) AS reversed
+     FROM api_keys k LEFT JOIN ledger l ON l.api_key_id = k.id AND l.created_at >= ? AND l.created_at < ?
+     WHERE k.merchant_id = ? GROUP BY k.id ORDER BY visits DESC, k.id`,
+    p.from, p.to, m.id,
+  ).map((r) => ({
+    id: n(r.id), label: String(r.label), revoked: r.revoked_at != null, last_used_at: r.last_used_at == null ? null : n(r.last_used_at),
+    visits: n(r.visits), redemptions: n(r.redemptions), reversed: n(r.reversed),
+  }))
   const unattributed = one(
-    `SELECT COUNT(*) AS n FROM ledger WHERE merchant_id = ? AND kind = 'earn' AND voided_at IS NULL AND staff_id IS NULL AND ${inPeriod}`,
+    `SELECT COUNT(*) AS n FROM ledger WHERE merchant_id = ? AND kind = 'earn' AND voided_at IS NULL AND staff_id IS NULL AND api_key_id IS NULL
+       AND ${inPeriod}`,
     m.id, p.from, p.to,
   )
 
@@ -187,6 +200,7 @@ export function report(db: DB, m: Merchant, p: Period): Report {
     daily,
     categories,
     staff,
+    systems,
     unattributed_visits: n(unattributed.n),
     messages: messageResults(db, m, p),
     referrals: referralStats(db, m, p.from, p.to),

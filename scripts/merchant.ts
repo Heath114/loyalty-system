@@ -5,6 +5,8 @@
  *       --threshold 500 --points-per-jod 10 --reward "Free screen protector" [--name-ar ...] [--reward-ar ...] \
  *       [--bg "rgb(10,40,80)"] [--fg "rgb(255,255,255)"] [--label "rgb(170,190,220)"]
  *   npm run merchant -- staff-key --slug phone-store --label "Counter 1"
+ *   npm run merchant -- api-key --slug phone-store --label "UniDash"     (a connected system: docs/INTEGRATION.md)
+ *   npm run merchant -- api-key-revoke --slug phone-store --id 2
  *   npm run merchant -- image --slug phone-store --name logo@2x.png --file ./logo@2x.png
  *   npm run merchant -- list
  *   npm run merchant -- show --slug phone-store
@@ -39,6 +41,7 @@ import { readFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { createAdmin, resetAdminPassword } from '../src/admin.ts'
 import { openDb } from '../src/db.ts'
+import { apiKeys, createApiKey, revokeApiKey } from '../src/integration.ts'
 import {
   addLocation, archiveCategory, categories, createCategory, createMerchant, locations, merchantBySlug, removeLocation, touchMerchant,
   updateCategory,
@@ -91,6 +94,19 @@ switch (command) {
     const key = newStaffKey()
     db.prepare('INSERT INTO staff (merchant_id, label, key_hash, created_at) VALUES (?, ?, ?, ?)').run(m.id, a.label ?? 'Staff', sha256(key), Date.now())
     console.log(`Staff key for ${m.name} (${a.label ?? 'Staff'}). Shown once, store it now:\n${key}`)
+    break
+  }
+  case 'api-key': {
+    const m = merchant()
+    const { id, key } = createApiKey(db, m, a.label ?? 'Connected system')
+    console.log(`API key ${id} for ${m.name} (${a.label ?? 'Connected system'}). Shown once, store it in the other system's secrets now:\n${key}`)
+    console.table(apiKeys(db, m.id).map(({ id, label, revoked_at, last_used_at }) => ({ id, label, revoked: !!revoked_at, last_used: last_used_at ? when(last_used_at) : '' })))
+    break
+  }
+  case 'api-key-revoke': {
+    const m = merchant()
+    revokeApiKey(db, m, Number(a.id))
+    console.log(`API key ${a.id} revoked. The system using it is refused from now on.`)
     break
   }
   case 'image': {
@@ -201,6 +217,6 @@ switch (command) {
     break
   }
   default:
-    console.log('Commands: create, staff-key, image, list, show, trigger, promo, promo-cancel, category, category-archive, reminder, reminder-remove, admin, admin-reset, location, location-remove.')
+    console.log('Commands: create, staff-key, api-key, api-key-revoke, image, list, show, trigger, promo, promo-cancel, category, category-archive, reminder, reminder-remove, admin, admin-reset, location, location-remove.')
     console.log('See the comment at the top of scripts/merchant.ts.')
 }

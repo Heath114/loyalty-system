@@ -3,3 +3,4 @@ data/
 certs/
 .env
 *.pkpass
+backups/

@@ -29,6 +29,7 @@ export function testConfig(over: Partial<Config> = {}): Config {
   return {
     publicUrl: 'https://cards.test',
     port: 0,
+    host: undefined,
     dbPath: ':memory:',
     secret: 'test-secret',
     pass: {
@@ -41,6 +42,7 @@ export function testConfig(over: Partial<Config> = {}): Config {
     apns: { host: 'https://apns.invalid' },
     nfcEncryptionPublicKey: null,
     google: null,
+    mail: null,
     ...over,
   }
 }

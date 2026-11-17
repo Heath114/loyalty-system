@@ -1,0 +1,14 @@
+# One backup of the database (scripts/backup.ts), started by loyalty-backup.timer.
+[Unit]
+Description=Loyalty cards database backup
+
+[Service]
+Type=oneshot
+User=loyalty
+Group=loyalty
+WorkingDirectory=/opt/loyalty-system
+ExecStart=/usr/bin/node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types scripts/backup.ts --dir /var/backups/loyalty --keep 14
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/loyalty

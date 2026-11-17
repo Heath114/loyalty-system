@@ -1,0 +1,5 @@
+# Caddy gets and renews the HTTPS certificate by itself. Replace the domain with PUBLIC_URL's.
+cards.example.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:8787
+}

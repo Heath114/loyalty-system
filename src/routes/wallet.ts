@@ -30,13 +30,16 @@ export function walletRoutes({ db, config }: Deps) {
       `INSERT INTO pass_registrations (device_library_id, serial, push_token, created_at) VALUES (?, ?, ?, ?)
        ON CONFLICT (device_library_id, serial) DO UPDATE SET push_token = excluded.push_token`,
     ).run(device, card.serial, body.pushToken, Date.now())
+    // The one sign, during a phone test, that the card reached a wallet and will get updates.
+    if (!before) console.log(`Wallet: card ${card.serial} registered for updates on a device`)
     return c.body(null, before ? 200 : 201)
   })
 
   app.delete('/v1/devices/:device/registrations/:ptid/:serial', (c) => {
     const card = cardBySerial(db, c.req.param('serial'), { deleted: true })
     if (c.req.param('ptid') !== ptid || !authorised(card, c.req.header('Authorization'))) return c.body(null, 401)
-    db.prepare('DELETE FROM pass_registrations WHERE device_library_id = ? AND serial = ?').run(c.req.param('device'), card.serial)
+    const { changes } = db.prepare('DELETE FROM pass_registrations WHERE device_library_id = ? AND serial = ?').run(c.req.param('device'), card.serial)
+    if (changes) console.log(`Wallet: card ${card.serial} removed from a device`)
     return c.body(null, 200)
   })
 

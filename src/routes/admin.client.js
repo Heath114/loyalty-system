@@ -13,6 +13,9 @@
   var tab = 'overview'
   var reportDays = 30
   var root = document.getElementById('root')
+  // Set by the server: whether "forgot my password" can email a link, and the shortest password it takes.
+  var RESET_ON = root.getAttribute('data-reset') === '1'
+  var MIN_PASSWORD = Number(root.getAttribute('data-min-password')) || 10
 
   // ---------------------------------------------------------------------------------------------
   // Words. Arabic is written for the reader, not translated word for word.
@@ -23,6 +26,11 @@
       signInHint: 'For the people who run a business\'s loyalty card.',
       setPassword: 'Choose your own password', setPasswordHint: 'You signed in with a password we made for you. Choose one only you know.',
       current: 'Current password', newPassword: 'New password', atLeast: 'At least {n} characters', savePassword: 'Save password',
+      forgot: 'Forgot your password?', forgotTitle: 'Reset your password', sendLink: 'Email me a link', backToSignIn: 'Back to sign in',
+      forgotHint: 'Write the email you sign in with. If it has a sign-in here, we email it a link that works for one hour.',
+      linkSent: 'If that email has a sign-in here, the link is on its way. Look in the spam folder too.',
+      resetTitle: 'Choose a new password', resetHint: 'This link works once, for an hour from when it was sent.',
+      noMail: 'Ask the people who set up your loyalty card to reset it for you. It takes them a minute.',
       tabs_overview: 'Overview', tabs_members: 'Members', tabs_messages: 'Messages', tabs_earning: 'Earning', tabs_card: 'Card',
       tabs_branches: 'Branches', tabs_staff: 'Staff', tabs_settings: 'Settings',
       saved: 'Saved', save: 'Save', cancel: 'Cancel', remove: 'Remove', confirm: 'Tap again to confirm', edit: 'Edit', add: 'Add',
@@ -80,6 +88,9 @@
       staff: 'Counter devices', staffHint: 'Each phone or tablet at the counter gets its own key. Open the staff page on it and paste the key once.',
       label: 'Name', created: 'Created', lastUsed: 'Last used', never: 'Never', revoked: 'Removed', newKey: 'New key', keyFor: 'Which counter or device',
       keyOnce: 'Copy this key now. It is shown only once; if it is lost, make a new one.', staffPage: 'Staff page',
+      systems: 'Connected systems', systemFor: 'Which system', systemTag: 'system', reversedCol: 'Reversed', apiAddress: 'API address',
+      systemsHint: 'A system that records purchases itself, like UniDash or a till, gets its own key. Give it to whoever sets that system up: it goes in the system\'s server secrets, never inside an app.',
+      systemKeyOnce: 'Copy this key now and put it in that system\'s secrets. It is shown only once; if it is lost, make a new one and remove this one.',
       // Settings
       account: 'Your sign-in', admins: 'People who can sign in', adminsHint: 'Everyone here can change everything on this dashboard.',
       addAdmin: 'Add person', adminName: 'Their name', tempPassword: 'Give them this password. They choose their own when they first sign in. It is shown only once.',
@@ -106,6 +117,11 @@
       signInHint: 'للمسؤولين عن بطاقة الولاء في المنشأة.',
       setPassword: 'اختر كلمة مرور خاصة بك', setPasswordHint: 'دخلت بكلمة مرور أعددناها لك. اختر كلمة لا يعرفها غيرك.',
       current: 'كلمة المرور الحالية', newPassword: 'كلمة المرور الجديدة', atLeast: '{n} أحرف على الأقل', savePassword: 'حفظ كلمة المرور',
+      forgot: 'نسيت كلمة المرور؟', forgotTitle: 'إعادة تعيين كلمة المرور', sendLink: 'أرسل لي رابطًا', backToSignIn: 'العودة لتسجيل الدخول',
+      forgotHint: 'اكتب البريد الإلكتروني الذي تدخل به. إن كان له حساب هنا، نرسل إليه رابطًا يعمل لمدة ساعة.',
+      linkSent: 'إن كان لهذا البريد حساب هنا، فالرابط في الطريق. تحقّق من مجلد الرسائل غير المرغوب فيها أيضًا.',
+      resetTitle: 'اختر كلمة مرور جديدة', resetHint: 'يعمل هذا الرابط مرة واحدة، ولمدة ساعة من وقت إرساله.',
+      noMail: 'اطلب من الجهة التي أعدّت بطاقة الولاء إعادة تعيينها لك، فالأمر لا يأخذ منها إلا دقيقة.',
       tabs_overview: 'نظرة عامة', tabs_members: 'الأعضاء', tabs_messages: 'الرسائل', tabs_earning: 'كسب النقاط', tabs_card: 'البطاقة',
       tabs_branches: 'الفروع', tabs_staff: 'الموظفون', tabs_settings: 'الإعدادات',
       saved: 'تم الحفظ', save: 'حفظ', cancel: 'إلغاء', remove: 'حذف', confirm: 'اضغط مرة أخرى للتأكيد', edit: 'تعديل', add: 'إضافة',
@@ -156,6 +172,9 @@
       staff: 'أجهزة الكاونتر', staffHint: 'لكل هاتف أو جهاز لوحي عند الكاونتر مفتاحه الخاص. افتح صفحة الموظفين عليه والصق المفتاح مرة واحدة.',
       label: 'الاسم', created: 'أُنشئ', lastUsed: 'آخر استخدام', never: 'لم يُستخدم', revoked: 'محذوف', newKey: 'مفتاح جديد', keyFor: 'أي كاونتر أو جهاز',
       keyOnce: 'انسخ هذا المفتاح الآن، فهو لا يظهر إلا مرة واحدة. إن ضاع أنشئ مفتاحًا جديدًا.', staffPage: 'صفحة الموظفين',
+      systems: 'الأنظمة المتصلة', systemFor: 'أي نظام', systemTag: 'نظام', reversedCol: 'أُلغي', apiAddress: 'عنوان الواجهة البرمجية',
+      systemsHint: 'كل نظام يسجّل المشتريات بنفسه، مثل يونيداش أو نظام الكاشير، يحصل على مفتاحه الخاص. أعطِه لمن يُعدّ ذلك النظام: يوضع في أسرار خادم النظام، ولا يوضع أبدًا داخل تطبيق.',
+      systemKeyOnce: 'انسخ هذا المفتاح الآن وضعه في أسرار ذلك النظام. لا يظهر إلا مرة واحدة؛ إن ضاع فأنشئ مفتاحًا جديدًا واحذف هذا.',
       account: 'حسابك', admins: 'من يمكنهم الدخول', adminsHint: 'كل من هنا يستطيع تغيير كل شيء في هذه اللوحة.',
       addAdmin: 'إضافة شخص', adminName: 'اسمه', tempPassword: 'أعطه كلمة المرور هذه، وسيختار كلمته الخاصة عند أول دخول. لا تظهر إلا مرة واحدة.',
       you: 'أنت', timezone: 'المنطقة الزمنية', timezoneHint: 'تُرسل الرسائل بين الساعة 10:00 والساعة 21:00 بهذا التوقيت.', pending: 'لم يدخل بعد',
@@ -398,8 +417,63 @@
           .finally(function () { btn.disabled = false })
       }
     }, h('h1', null, t('signIn')), h('p', { class: 'muted' }, t('signInHint')), field(t('email'), email), field(t('password'), password), err, btn)
-    root.replaceChildren(h('div', { class: 'auth' }, h('div', { class: 'lang-switch' }, langToggle()), form))
+    root.replaceChildren(h('div', { class: 'auth' }, h('div', { class: 'lang-switch' }, langToggle()), form,
+      h('button', { type: 'button', class: 'link', onclick: function () { renderForgot(email.value) } }, t('forgot'))))
     email.focus()
+  }
+
+  /** "Forgot your password?": asks for a link by email. The answer is the same whether or not the email has a sign-in. */
+  function renderForgot(prefill) {
+    var back = h('button', { type: 'button', class: 'link', onclick: function () { renderLogin() } }, t('backToSignIn'))
+    if (!RESET_ON) {
+      root.replaceChildren(h('div', { class: 'auth' }, h('div', { class: 'lang-switch' }, langToggle()),
+        h('div', { class: 'panel' }, h('h1', null, t('forgotTitle')), h('p', null, t('noMail'))), back))
+      return
+    }
+    var email = h('input', { type: 'email', autocomplete: 'username', required: true, dir: 'ltr', value: prefill || '' })
+    var err = h('p', { class: 'err', role: 'alert' })
+    var btn = h('button', { type: 'submit' }, t('sendLink'))
+    var form = h('form', {
+      class: 'panel', onsubmit: function (e) {
+        e.preventDefault()
+        btn.disabled = true
+        err.textContent = ''
+        fetch('/api/admin/forgot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.value, lang: lang }) })
+          .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Request failed'); return j }) })
+          .then(function () { form.replaceChildren(h('h1', null, t('forgotTitle')), h('p', { role: 'status' }, t('linkSent'))) })
+          .catch(function (e2) { err.textContent = e2.message })
+          .finally(function () { btn.disabled = false })
+      }
+    }, h('h1', null, t('forgotTitle')), h('p', { class: 'muted' }, t('forgotHint')), field(t('email'), email), err, btn)
+    root.replaceChildren(h('div', { class: 'auth' }, h('div', { class: 'lang-switch' }, langToggle()), form, back))
+    email.focus()
+  }
+
+  /** The link from the email: #reset=<token>. A new password signs them straight in. */
+  function renderReset(resetToken) {
+    var next = h('input', { type: 'password', autocomplete: 'new-password', required: true, dir: 'ltr', minlength: String(MIN_PASSWORD) })
+    var err = h('p', { class: 'err', role: 'alert' })
+    var btn = h('button', { type: 'submit' }, t('savePassword'))
+    var form = h('form', {
+      class: 'panel', onsubmit: function (e) {
+        e.preventDefault()
+        btn.disabled = true
+        err.textContent = ''
+        fetch('/api/admin/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: resetToken, password: next.value }) })
+          .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Request failed'); return j }) })
+          .then(function (j) {
+            try { history.replaceState(null, '', location.pathname + location.search) } catch (e3) {}
+            token = j.token
+            save(TOKEN_KEY, token)
+            return start()
+          })
+          .catch(function (e2) { err.textContent = e2.message })
+          .finally(function () { btn.disabled = false })
+      }
+    }, h('h1', null, t('resetTitle')), h('p', { class: 'muted' }, t('resetHint')), field(t('newPassword'), next, t('atLeast', { n: MIN_PASSWORD })), err, btn)
+    root.replaceChildren(h('div', { class: 'auth' }, h('div', { class: 'lang-switch' }, langToggle()), form,
+      h('button', { type: 'button', class: 'link', onclick: function () { try { history.replaceState(null, '', location.pathname) } catch (e) {} renderLogin() } }, t('backToSignIn'))))
+    next.focus()
   }
 
   function passwordForm(onDone) {
@@ -541,6 +615,9 @@
       }
       var staffRows = r.staff.filter(function (s) { return s.visits || s.redemptions || s.undone || !s.revoked }).map(function (s) {
         return h('tr', null, td(s.label + (s.revoked ? ' (' + t('revoked') + ')' : '')), td(fmtNum(s.visits), true), td(fmtNum(s.redemptions), true), td(fmtNum(s.undone), true), td(s.last_used_at ? fmtDateTime(s.last_used_at) : t('never'), true))
+      })
+      ;(r.systems || []).filter(function (s) { return s.visits || s.redemptions || s.reversed || !s.revoked }).forEach(function (s) {
+        staffRows.push(h('tr', null, td(s.label + ' (' + t('systemTag') + (s.revoked ? ', ' + t('revoked') : '') + ')'), td(fmtNum(s.visits), true), td(fmtNum(s.redemptions), true), td(fmtNum(s.reversed), true), td(s.last_used_at ? fmtDateTime(s.last_used_at) : t('never'), true)))
       })
       if (r.unattributed_visits) staffRows.push(h('tr', null, td(h('span', { class: 'muted' }, t('noStaff'))), td(fmtNum(r.unattributed_visits), true), td(''), td(''), td('')))
       kids.push(h('div', { class: 'panel' }, h('h2', null, t('byStaff')),
@@ -1062,7 +1139,32 @@
             var l = label.value || 'Counter'
             act(btn, function () { return api('POST', 'staff', { label: l }) }, null).then(function (r) { if (r) { shownKey = { label: l, key: r.key }; renderApp() } })
           }
-        }, field(t('keyFor'), label), h('div', { class: 'actions' }, btn))))
+        }, field(t('keyFor'), label), h('div', { class: 'actions' }, btn))),
+      systemsPanel())
+  }
+
+  var shownSystem = null
+  function systemsPanel() {
+    var label = h('input', { placeholder: 'UniDash' })
+    var btn = h('button', { type: 'submit' }, t('newKey'))
+    var rows = (S.systems || []).map(function (s) {
+      return h('tr', null, td(s.label), td(fmtDate(s.created_at), true), td(s.last_used_at ? fmtDateTime(s.last_used_at) : t('never'), true),
+        td(s.revoked_at ? h('span', { class: 'badge' }, t('revoked')) : armed(t('remove'), function (b) { act(b, function () { return api('DELETE', 'systems/' + s.id) }).then(renderApp) })))
+    })
+    var reveal = shownSystem ? h('div', null, h('h3', null, shownSystem.label), h('p', { class: 'warn' }, t('systemKeyOnce')), h('div', { class: 'secret' }, shownSystem.key),
+      h('div', { class: 'actions' }, copyButton(shownSystem.key))) : null
+    shownSystem = null
+    return h('div', { class: 'panel' }, h('h2', null, t('systems')), h('p', { class: 'muted small' }, t('systemsHint')),
+      h('p', { class: 'small' }, t('apiAddress') + ': ', h('span', { dir: 'ltr' }, S.links.api)),
+      reveal,
+      rows.length ? table([t('label'), t('created'), t('lastUsed'), ''], rows, [1, 2]) : null,
+      h('form', {
+        onsubmit: function (e) {
+          e.preventDefault()
+          var l = label.value || 'Connected system'
+          act(btn, function () { return api('POST', 'systems', { label: l }) }, null).then(function (r) { if (r) { shownSystem = { label: l, key: r.key }; renderApp() } })
+        }
+      }, field(t('systemFor'), label), h('div', { class: 'actions' }, btn)))
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1134,6 +1236,8 @@
   document.documentElement.lang = lang
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
   document.title = t('title')
-  if (token) start()
+  var resetMatch = /^#reset=([A-Za-z0-9_-]{10,100})$/.exec(location.hash || '')
+  if (resetMatch) renderReset(resetMatch[1])
+  else if (token) start()
   else renderLogin()
 })()

@@ -1,0 +1,26 @@
+# The server, run by systemd: started at boot, restarted if it stops. Exactly one instance: the
+# database is one SQLite file and the scheduler must not run twice. See deploy/README.md.
+[Unit]
+Description=Loyalty cards server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=loyalty
+Group=loyalty
+WorkingDirectory=/opt/loyalty-system
+# Reads .env from the working directory, like `npm start`.
+ExecStart=/usr/bin/node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types src/server.ts
+Restart=always
+RestartSec=5
+
+# It needs to write only its database.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/loyalty-system/data
+
+[Install]
+WantedBy=multi-user.target

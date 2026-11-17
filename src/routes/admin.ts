@@ -4,8 +4,9 @@ import { bodyLimit } from 'hono/body-limit'
 import { createMiddleware } from 'hono/factory'
 import type { Deps } from '../app.ts'
 import {
-  admins, changePassword, createAdmin, createStaffKey, disableAdmin, imageSlots, IMAGE_SLOTS, login, logout, MAX_IMAGE_BYTES,
-  MIN_PASSWORD, parseLatLng, removeImage, revokeStaff, sessionAdmin, setImage, staffList, updateMerchant, type Admin,
+  admins, changePassword, completePasswordReset, createAdmin, createStaffKey, disableAdmin, imageSlots, IMAGE_SLOTS, login, logout,
+  MAX_IMAGE_BYTES, MIN_PASSWORD, parseLatLng, removeImage, requestPasswordReset, revokeStaff, sessionAdmin, setImage, staffList,
+  updateMerchant, type Admin,
 } from '../admin.ts'
 import {
   addLocation, adjust, archiveCategory, archiveReward, boosts, cancelBoost, categories, createBoost, createCategory, createReward,
@@ -17,6 +18,8 @@ import {
   campaigns, cancelCampaign, createCampaign, createReminder, localToEpoch, MAX_PER_30_DAYS, MAX_PER_DAY, MAX_REMINDERS, MAX_TEXT,
   reminders, removeReminder, SEND_HOURS, setTrigger, triggers, updateReminder, type TriggerKind,
 } from '../messages.ts'
+import { apiKeys, createApiKey, revokeApiKey } from '../integration.ts'
+import { resetEmail } from '../mail.ts'
 import { cardChanged, cardDeleted } from '../notify.ts'
 import { merchantImage } from '../pass/build.ts'
 import { checkDays, lastDays, member, members, membersCsv, report } from '../reports.ts'
@@ -25,6 +28,9 @@ const ADMIN_JS = readFileSync(new URL('./admin.client.js', import.meta.url), 'ut
 const ADMIN_CSS = readFileSync(new URL('./admin.css', import.meta.url), 'utf8')
 
 type Env = { Variables: { admin: Admin; merchant: Merchant; token: string } }
+
+/** Answered without a session: signing in, and getting back in after a forgotten password. */
+const SIGNED_OUT = new Set(['/api/admin/login', '/api/admin/forgot', '/api/admin/reset'])
 
 /** While an admin still has the password we made for them, only these work: set your own first. */
 const BEFORE_PASSWORD = new Set(['/api/admin/state', '/api/admin/password', '/api/admin/logout'])
@@ -47,7 +53,7 @@ export function adminRoutes(deps: Deps) {
 <style>${ADMIN_CSS}</style>
 </head>
 <body>
-<div id="root"><p class="boot">Loading…</p></div>
+<div id="root" data-reset="${deps.mail ? 1 : 0}" data-min-password="${MIN_PASSWORD}"><p class="boot">Loading…</p></div>
 <script>${ADMIN_JS}</script>
 </body>
 </html>`)
@@ -57,6 +63,28 @@ export function adminRoutes(deps: Deps) {
     const body = await c.req.json<{ email?: string; password?: string }>()
     const s = await login(db, body.email, body.password)
     return c.json({ token: s.token, must_change: !!s.admin.must_change })
+  })
+
+  /**
+   * "Forgot my password". The same answer whether or not the email has a sign-in, and the email goes
+   * out after the answer, so neither the words nor the timing tell.
+   */
+  app.post('/api/admin/forgot', async (c) => {
+    const mail = deps.mail
+    if (!mail) throw new LoyaltyError('Password reset by email is not set up here. Ask the people who set up your card.', 404)
+    const body = await c.req.json<{ email?: string; lang?: string }>()
+    const r = requestPasswordReset(db, body.email)
+    if (r) {
+      const lang = body.lang === 'ar' ? 'ar' : 'en'
+      setImmediate(() => mail.send(resetEmail(config.publicUrl, r.admin.email, r.token, lang)).catch((e) => console.error('reset email failed:', (e as Error).message)))
+    }
+    return c.json({ ok: true })
+  })
+
+  app.post('/api/admin/reset', async (c) => {
+    const body = await c.req.json<{ token?: string; password?: string }>()
+    const s = await completePasswordReset(db, body.token, body.password)
+    return c.json({ token: s.token })
   })
 
   const auth = createMiddleware<Env>(async (c, next) => {
@@ -70,7 +98,7 @@ export function adminRoutes(deps: Deps) {
     c.header('Cache-Control', 'no-store')
     await next()
   })
-  app.use('/api/admin/*', async (c, next) => (c.req.path === '/api/admin/login' ? next() : auth(c, next)))
+  app.use('/api/admin/*', async (c, next) => (SIGNED_OUT.has(c.req.path) ? next() : auth(c, next)))
 
   app.post('/api/admin/logout', (c) => {
     logout(db, c.get('token'))
@@ -99,7 +127,7 @@ export function adminRoutes(deps: Deps) {
       },
       links: {
         join: `${base}/m/${m.slug}`, qr: `${base}/m/${m.slug}/qr.svg`, poster: `${base}/m/${m.slug}/poster`, staff: `${base}/staff`,
-        privacy: `${base}/m/${m.slug}/privacy`,
+        privacy: `${base}/m/${m.slug}/privacy`, api: `${base}/api/v1`,
       },
       google: !!deps.google,
       images: imageSlots(db, m),
@@ -111,6 +139,7 @@ export function adminRoutes(deps: Deps) {
       campaigns: campaigns(db, m.id).slice(0, 50),
       locations: locations(db, m.id),
       staff: staffList(db, m.id),
+      systems: apiKeys(db, m.id).map(({ merchant_id: _, ...k }) => k),
       admins: admins(db, m.id),
       limits: {
         text: MAX_TEXT, per_day: MAX_PER_DAY, per_30_days: MAX_PER_30_DAYS, hours: SEND_HOURS, locations: MAX_LOCATIONS,
@@ -220,6 +249,16 @@ export function adminRoutes(deps: Deps) {
   })
   app.delete('/api/admin/staff/:id', (c) => {
     revokeStaff(db, c.get('merchant'), num(c.req.param('id')))
+    return c.json({ ok: true })
+  })
+
+  /** A key for a connected system (UniDash, a till), shown once. */
+  app.post('/api/admin/systems', async (c) => {
+    const body = await c.req.json<{ label?: string }>()
+    return c.json({ ok: true, ...createApiKey(db, c.get('merchant'), body.label) })
+  })
+  app.delete('/api/admin/systems/:id', (c) => {
+    revokeApiKey(db, c.get('merchant'), num(c.req.param('id')))
     return c.json({ ok: true })
   })
 

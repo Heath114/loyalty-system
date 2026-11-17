@@ -4,14 +4,17 @@ import { createApp } from './app.ts'
 import { loadConfig } from './config.ts'
 import { openDb } from './db.ts'
 import { googleWallet } from './google.ts'
+import { resendMailer } from './mail.ts'
 import { startScheduler } from './scheduler.ts'
 
 const config = loadConfig()
 const db = openDb(config.dbPath)
-const deps = { db, config, push: apnsPusher(config), google: config.google ? googleWallet(config) : null }
+const deps = {
+  db, config, push: apnsPusher(config), google: config.google ? googleWallet(config) : null, mail: config.mail ? resendMailer(config.mail) : null,
+}
 const app = createApp(deps)
 startScheduler(db, deps)
 
-serve({ fetch: app.fetch, port: config.port }, (info) => {
-  console.log(`loyalty-system on :${info.port}, public at ${config.publicUrl}, Google Wallet ${deps.google ? 'on' : 'off'}`)
+serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
+  console.log(`loyalty-system on :${info.port}, public at ${config.publicUrl}, Google Wallet ${deps.google ? 'on' : 'off'}, reset emails ${deps.mail ? 'on' : 'off'}`)
 })
