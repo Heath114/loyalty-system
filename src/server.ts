@@ -15,6 +15,6 @@ const deps = {
 const app = createApp(deps)
 startScheduler(db, deps)
 
-serve({ fetch: app.fetch, port: config.port }, (info) => {
+serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
   console.log(`loyalty-system on :${info.port}, public at ${config.publicUrl}, Google Wallet ${deps.google ? 'on' : 'off'}, reset emails ${deps.mail ? 'on' : 'off'}`)
 })
