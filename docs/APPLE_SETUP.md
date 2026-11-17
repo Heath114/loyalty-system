@@ -16,35 +16,37 @@ who does it and how to check the result, is in [`MANUAL_STEPS.md`](MANUAL_STEPS.
 ## 2. Create its certificate
 
 On the Pass Type ID → **Create Certificate**. Apple asks for a CSR. One already exists (2026-11-04,
-`certs/pass.csr` on Malek's PC, made from `certs/pass.key`); to make a new one:
+`certs/pass.csr` on Malek's PC, made from `certs/pass.key`). To make a key and CSR on another machine
+(it never overwrites a key that is there):
 
 ```sh
-openssl req -new -newkey rsa:2048 -nodes -keyout certs/pass.key -out certs/pass.csr -subj "/CN=loyalty pass"
+npm run apple -- csr        # certs/pass.key, certs/pass.csr, and a copy of the CSR on the Desktop
 ```
 
-Upload `pass.csr`, download `pass.cer`, convert it:
+Upload the CSR, download `pass.cer`, and hand it over; it is checked against the key before it is saved:
 
 ```sh
-openssl x509 -inform DER -in pass.cer -out certs/pass.pem
+npm run apple -- cert ~/Downloads/pass.cer      # → certs/pass.pem
 ```
 
-If the certificate was made through Keychain instead, export it as `.p12` and split it:
+If the certificate was made through Keychain instead, export it with its key as `.p12` and split it:
 
 ```sh
-openssl pkcs12 -in pass.p12 -clcerts -nokeys -out certs/pass.pem -legacy
-openssl pkcs12 -in pass.p12 -nocerts -nodes -out certs/pass.key -legacy
+npm run apple -- p12 ~/Desktop/pass.p12 --password '...'
 ```
+
+On a Mac, [`BADER_MAC.md`](BADER_MAC.md) runs these in order.
 
 The certificate expires after a year. Renew it before then: an expired certificate stops new cards
 installing and stops updates reaching existing ones.
 
 ## 3. Download Apple's WWDR intermediate (G4)
 
-From https://www.apple.com/certificateauthority/ → "Worldwide Developer Relations - G4":
-
 ```sh
-openssl x509 -inform DER -in AppleWWDRCAG4.cer -out certs/wwdr-g4.pem
+npm run apple -- wwdr       # downloads it from apple.com/certificateauthority, checks its fingerprint → certs/wwdr-g4.pem
 ```
+
+`npm run doctor` then checks the three files belong together and signs a test card.
 
 ## 4. Host it on HTTPS
 
@@ -55,7 +57,7 @@ Hosting: this runs on **Node 22**, not Cloudflare Workers as the study first ass
 pushes go to APNs over HTTP/2 using the Pass Type ID certificate as a TLS client certificate, and
 Workers can do neither. Any small Node host works (a VPS, Fly.io, Render, or our own server behind
 Caddy). The database is a single SQLite file, `DB_PATH`, which must sit on a persistent disk and be
-backed up. [TBD: pick the host]
+backed up. [TBD: pick the host] Our own server: [`deploy/README.md`](../deploy/README.md).
 
 ## 5. Try it on a phone
 

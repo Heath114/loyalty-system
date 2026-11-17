@@ -12,12 +12,15 @@ this file is the checklist that ties them together and records where we are.
 account JSON, staff keys, admin passwords. This repo is **public** (step 1). `.gitignore` already
 excludes `.env`, `certs/` and `data/`.
 
+**From a Mac, steps 2, 3, 5, 7 and 8 are one command each: [`BADER_MAC.md`](BADER_MAC.md).** This file
+stays the reference for what each step is and why.
+
 ## Status at a glance
 
-| # | Step | Who | Status (2026-11-04) | Unblocks |
+| # | Step | Who | Status (2026-11-17) | Unblocks |
 |---|---|---|---|---|
 | 1 | Make the repo private | Heath114 account owner | ⏳ deferred ("later", 2026-10-19) | Nothing technical; protects the study and pricing |
-| 2 | Apple Pass Type ID + certificate | Apple team Account Holder or Admin | 🟡 key and CSR made, waiting on Apple | Any card on any iPhone |
+| 2 | Apple Pass Type ID + certificate | Apple team Account Holder or Admin | 🟡 key and CSR made on Malek's PC, waiting on Apple; or all of it from Bader's Mac (`BADER_MAC.md` §2 to §4) | Any card on any iPhone |
 | 3 | Apple WWDR G4 intermediate | done | ✅ 2026-11-04 | Signing |
 | 4 | Google issuer account | done | ✅ 2026-10-19, Issuer ID `3388000000023224499`, demo mode | Google cards |
 | 5 | Google service account key | Google account that owns the issuer | ⏳ not started | Any card on any Android |
@@ -29,6 +32,8 @@ excludes `.env`, `certs/` and `data/`.
 | 11 | Google publishing access | Google issuer owner | ⏳ after 8 | Android customers outside our test list |
 | 12 | Before the first real merchant | partners | ⏳ | Going live |
 | 13 | NFC tap (optional, later) | partners | 🔴 not started, not needed for v1 | Tap like Apple Pay |
+| 14 | Email for "forgot my password" | whoever runs Cloudflare DNS | ⏳ not started; code ready | Merchants reset their own password |
+| 15 | UniDash's side of the connection | whoever builds the UniDash add-on | ⏳ not started; the API is ready (`INTEGRATION.md`) | Points on UniDash orders |
 
 ---
 
@@ -91,17 +96,15 @@ identifiers or certificates. If that is Bader, send him the CSR file and this se
    `pass.cer`.
 6. Put `pass.cer` in the PC's Downloads folder (or send it: it is a public certificate).
 
-**What to do with the result (whoever runs the server):**
+**What to do with the result (on the machine that has `certs/pass.key`):**
 
 ```sh
-openssl x509 -inform DER -in ~/Downloads/pass.cer -out certs/pass.pem
-# The certificate must belong to our key: these two lines must print the same hash.
-openssl x509 -in certs/pass.pem -noout -pubkey | openssl sha256
-openssl pkey -in certs/pass.key -pubout | openssl sha256
-# And it must name the identifier and the team:
-openssl x509 -in certs/pass.pem -noout -subject -enddate
-# subject should contain UID=pass.com.theoffice.loyalty and OU=LZ8RFD29KM
+npm run apple -- cert ~/Downloads/pass.cer
 ```
+
+It saves `certs/pass.pem` only if the certificate belongs to our key and names
+`pass.com.theoffice.loyalty` and team `LZ8RFD29KM`, and says which of those is wrong otherwise. A new
+key and CSR, on a machine that has none yet: `npm run apple -- csr` (it never overwrites a key).
 
 Then in `.env`: `PASS_TYPE_ID=pass.com.theoffice.loyalty`, `APPLE_TEAM_ID=LZ8RFD29KM`,
 `PASS_CERT_PATH=certs/pass.pem`, `PASS_KEY_PATH=certs/pass.key`.
@@ -208,6 +211,9 @@ unguessable, but it is still this PC on the internet. Run it only during a test,
    `C:\Users\USER\tools\cloudflared\cloudflared.exe tunnel --no-autoupdate --url http://localhost:8787`
 3. Ctrl+C both when done.
 
+On a Mac, `./scripts/mac.sh tunnel` does all three: it starts the tunnel, writes its address into
+`PUBLIC_URL`, starts the server, and Ctrl+C stops both.
+
 **After the test:** cards added during it point at an address that no longer exists, so they never
 update again. Delete them from the phone (Wallet → card → ... → Remove Pass) and delete
 `data/loyalty.db` before using the PC for anything real.
@@ -221,7 +227,7 @@ installs and scans but never updates (no HTTPS). Windows may ask to allow Node t
 
 **Needs:** step 2 for iPhone; steps 5 and 6 for Android; step 7 (or step 10) for live updates.
 
-**Setup (on the PC running the server):**
+**Setup (on the PC running the server; on a Mac, `./scripts/mac.sh test-cafe <email>`):**
 
 ```sh
 npm run merchant -- create --slug test-cafe --name "Test Cafe" --name-ar "مقهى تجريبي" --program stamps \
@@ -256,7 +262,8 @@ Console.app → the iPhone → filter `passd`. Without a Mac, note the exact Saf
 that mismatch is the usual cause.
 
 **If updates never arrive:** `PUBLIC_URL` must be the HTTPS address the phone used; the server log
-shows `POST /wallet/v1/devices/...` when the card registered. No such line means Wallet never
+shows `Wallet: card <serial> registered for updates on a device` when the card registered, and
+`[wallet] ...` lines are Wallet's own error reports. `npm run doctor -- --online` checks the rest. No such line means Wallet never
 registered: check HTTPS and that the card was added after the server had the right `PUBLIC_URL`.
 
 **Record the result** in the handbook (tasks §9) with the date and which rows failed.
@@ -302,7 +309,9 @@ DNS (where `theoffice.it.com` lives) that is one `A` or `CNAME` record.
 | Railway or Render with a disk | a few USD a month | Fine if the disk is persistent; check the plan does not sleep |
 
 **Deploy, whatever the host:** `npm ci --omit=dev`, copy `certs/` and `.env`, `npm start` under a
-process manager that restarts it (systemd, Fly, Railway). `GET /health` answers `{"ok":true}`.
+process manager that restarts it (systemd, Fly, Railway). `GET /health` answers `{"ok":true}`, and
+`npm run doctor -- --online` must end with "Ready.". For our own server, every command is in
+[`deploy/README.md`](../deploy/README.md), with the systemd units, the nightly backup and Caddy.
 
 **Environment on the host:** everything in `.env.example`, with `PUBLIC_URL` the real HTTPS
 domain, a fresh `APP_SECRET` (`openssl rand -base64 32`, never reused from a test), and the Apple
@@ -329,10 +338,11 @@ When granted, `[TEST ONLY]` disappears from existing cards and any Android phone
 
 Not code. Each one is a paper, a picture or a decision.
 
-- **Official wallet buttons.** Replace the plain text buttons with Apple's **Add to Apple Wallet**
-  badge and Google's **Add to Google Wallet** button, unmodified, in both languages.
+- **Official wallet buttons.** Download Apple's **Add to Apple Wallet** badge and Google's **Add to
+  Google Wallet** button, English and Arabic, and put the four SVGs in `assets/wallet-badges/` under
+  the names its README gives. The card page uses them from the next restart, unmodified.
   https://developer.apple.com/wallet/add-to-apple-wallet-guidelines/ and
-  https://developers.google.com/wallet/retail/loyalty-cards/resources/brand-guidelines
+  https://developers.google.com/wallet/generic/resources/brand-guidelines
 - **Privacy notice per merchant** (Jordan PDPL): the system already serves one at
   `PUBLIC_URL/m/<slug>/privacy`, linked from the join page, in Arabic and English: who is
   responsible (the merchant), what is collected, why, who sees it, how long, and the member's rights.
@@ -352,7 +362,8 @@ Not code. Each one is a paper, a picture or a decision.
 - **The merchant's dashboard sign-in:** `npm run merchant -- admin --slug <slug> --email <owner's email>`.
   It prints a one-time password: hand it over in person or by phone, never in the same message as
   the email address. They must choose their own at the first sign-in, and can add colleagues
-  themselves (Settings). A forgotten password: `npm run merchant -- admin-reset --email ...`.
+  themselves (Settings). A forgotten password: "Forgot your password?" on the sign-in page once
+  step 14 is done; until then `npm run merchant -- admin-reset --email ...`.
 - **Staff:** one key per counter device, made in the dashboard (Staff → New key, shown once). Show
   staff the five-second flow: scan, tap what was bought, add.
 - **First customer's terms** (study §7): founding price in writing, clearly temporary.
@@ -369,6 +380,39 @@ exist.
 
 ---
 
+## 14. Email for "forgot my password"
+
+**What it is:** the dashboard's "Forgot your password?" emails a one-hour link. It is the only email
+the system sends; customers never get email. Through Resend (resend.com; its free plan sends far more
+than resets will ever need). A different provider is a small change in `src/mail.ts`.
+
+**Steps:**
+
+1. resend.com → sign up with a company address → **Domains** → **Add domain** `theoffice.it.com` (or the
+   product's domain from step 9). Resend shows DNS records (SPF, DKIM); add each one on Cloudflare
+   DNS, proxy **off**, and wait for **Verified**.
+2. **API Keys** → **Create API key**, permission **Sending access**, that domain only. Shown once.
+3. On the server's `.env`: `RESEND_API_KEY=re_...` and `MAIL_FROM=Loyalty <cards@theoffice.it.com>`
+   (any address on the verified domain). Restart.
+
+**Check:** the server's first log line ends `reset emails on`; `npm run doctor` says
+`Reset emails on`; "Forgot your password?" on `/admin` with your own sign-in's email delivers a link.
+
+**If it leaks:** delete the key in Resend and make a new one. It can only send email.
+
+---
+
+## 15. UniDash's side of the connection
+
+Code, but in the UniDash repo, not this one: the edge function that calls this server when an order
+is collected, the loyalty section on the profile, and the one-time "Add to Wallet" offer.
+[`INTEGRATION.md`](INTEGRATION.md) maps each piece to its call. Before it is built: the owner's
+answers to `UNIDASH_ADDON.md` §5 (who funds a reward, stamps or points, expiry), and one merchant
+here per venue that switches the program on, with its key in UniDash's secrets
+(`npm run merchant -- api-key --slug <venue> --label UniDash`).
+
+---
+
 ## Secrets: what each one is and where it lives
 
 | Secret | Made by | Lives in | If it leaks |
@@ -379,3 +423,6 @@ exist.
 | `APP_SECRET` | `openssl rand -base64 32` | `.env` on the server | Changing it invalidates every card QR and card link: rotate only if it truly leaked |
 | Staff keys (`sk_...`) | dashboard or CLI, shown once | the counter device's browser | Remove it in the dashboard (Staff); make a new one |
 | Admin passwords | CLI (first one), then the dashboard; shown once | the merchant's head | `npm run merchant -- admin-reset`; every session of that admin ends |
+| Connected-system keys (`lk_...`) | dashboard (Staff → Connected systems) or `npm run merchant -- api-key`, shown once | the other system's server secrets (never an app) | Remove it in the dashboard; make a new one and update that system |
+| `RESEND_API_KEY` | step 14 | `.env` on the server | Delete it in Resend, make a new one |
+| Reset links (`#reset=rt_...`) | the server, by email | the admin's inbox, one hour, once | Nothing to do: they expire; a new link ends the old one |

@@ -71,21 +71,36 @@ The loyalty base, end to end:
   stay in the numbers without a name.
 - **NFC-ready:** the QR payload is signed and short enough for an NFC pass. Setting one variable
   switches NFC on once Apple grants the entitlement (`docs/APPLE_SETUP.md` §6).
+- **Connected systems** (`/api/v1`, [`docs/INTEGRATION.md`](docs/INTEGRATION.md)): UniDash, or a
+  till, records purchases and rewards itself with no staff scan. A key per system per merchant;
+  members by the system's own ID, purchases by its order ID, so a retry never earns twice; refunds
+  and rewards not given are reversed by the same IDs. UniDash's side (points on a collected order,
+  the reward as its own voucher) is mapped call by call there.
+- **"Forgot your password?"** on the dashboard: a one-hour, single-use link by email (Resend). Off
+  until `RESEND_API_KEY` is set; then we still reset from the command line.
+- **The official wallet buttons**, Apple's and Google's, per language, as soon as their artwork is in
+  `assets/wallet-badges/` (the README there says where from); text buttons until then.
+- **Going live without openssl or guesswork:** `npm run apple` makes the key and CSR and checks the
+  certificate Apple returns; `npm run doctor` checks a whole setup and signs a test card;
+  `npm run backup` copies the database while it runs; `deploy/` sets up our own server;
+  `scripts/mac.sh` does every go-live step on a Mac ([`docs/BADER_MAC.md`](docs/BADER_MAC.md)).
 
-Not built yet: creating a merchant from the dashboard (we create each merchant and its first sign-in
-from the command line, on purpose: it is our step, with a contract behind it), password reset by
-email (we reset from the command line), SMS or WhatsApp, and NFC (waits on Apple, `docs/APPLE_SETUP.md` §6).
-Nothing has run on a real phone yet: [`docs/MANUAL_STEPS.md`](docs/MANUAL_STEPS.md) is what stands
-between this code and the first customer.
+Not built, on purpose: creating a merchant from the dashboard (we create each merchant and its first
+sign-in from the command line: it is our step, with a contract behind it), and SMS or WhatsApp (no
+SMS, UniDash §15; a paid add-on question for the study). NFC waits on Apple (`docs/APPLE_SETUP.md` §6).
+UniDash's own side of the connection lives in the UniDash repo and is not built yet.
+Nothing has run on a real phone yet: [`docs/BADER_MAC.md`](docs/BADER_MAC.md) is that test, from a Mac,
+and [`docs/MANUAL_STEPS.md`](docs/MANUAL_STEPS.md) is everything between this code and the first customer.
 
 ## Running it
 
 ```sh
 npm install
-npm test                 # 89 tests: ledger, categories, undo and adjustments, the reward menu, gifts and
+npm test                 # 108 tests: ledger, categories, undo and adjustments, the reward menu, gifts and
                          # referrals, bonus periods, signing (verified with openssl), Wallet web service, staff
                          # API, messages, reminders and their caps, reports, deletion, the customer pages, the
-                         # dashboard API, Google Wallet against an in-memory fake of its API
+                         # dashboard API, Google Wallet against an in-memory fake of its API, the connected-
+                         # systems API, password reset, the Apple certificate checks, the doctor, backups
 npm run dev-certs        # stand-in certificates: passes build, an iPhone will not accept them
 cp .env.example .env     # use the "Local development" values at the bottom
 npm run merchant -- create --slug cafe --name "Cafe" --program stamps --threshold 10 --reward "Free coffee"
@@ -105,13 +120,24 @@ npm run merchant -- location --slug cafe --label "Abdoun" --lat 31.9539 --lng 35
 npm run merchant -- category --slug cafe --name "Colour" --fixed 1
 npm run merchant -- reminder --slug cafe --category 1 --days 42 --text "Time for your colour, {name}?"
 npm run merchant -- staff-key --slug cafe --label "Counter 1"
-npm run merchant -- admin-reset --email you@example.com          # a forgotten password
+npm run merchant -- api-key --slug cafe --label "UniDash"         # a connected system's key, shown once
+npm run merchant -- admin-reset --email you@example.com          # a forgotten password, without email
 npm run merchant -- show --slug cafe
 ```
 
 For a real iPhone, follow [`docs/APPLE_SETUP.md`](docs/APPLE_SETUP.md): Pass Type ID, its
 certificate, Apple's WWDR certificate, and an HTTPS host. For Android, follow
-[`docs/GOOGLE_SETUP.md`](docs/GOOGLE_SETUP.md).
+[`docs/GOOGLE_SETUP.md`](docs/GOOGLE_SETUP.md). On a Mac, [`docs/BADER_MAC.md`](docs/BADER_MAC.md)
+does both with `scripts/mac.sh`. Before a phone test, and on every server:
+
+```sh
+npm run apple -- csr                    # our key (once) and the CSR for Apple
+npm run apple -- cert ~/Downloads/pass.cer
+npm run apple -- wwdr                   # Apple's intermediate, fingerprint checked
+npm run doctor                          # every setting and certificate, and a test card signed
+npm run doctor -- --online              # also: PUBLIC_URL answers, Google accepts our key
+npm run backup                          # a consistent copy of the database into backups/
+```
 
 ## Layout
 
@@ -121,7 +147,10 @@ certificate, Apple's WWDR certificate, and an HTTPS host. For Android, follow
 | `src/messages.ts` | Birthday, win-back, reminder and promotion messages: what is due, the caps, sending hours. |
 | `src/reports.ts` | What the dashboard shows: the period report, message results, members, the CSV. |
 | `src/referrals.ts` | "Bring a friend": invite links, paying referral bonuses, referral numbers. |
-| `src/admin.ts` | Dashboard sign-in and sessions, admins, merchant settings, images, staff keys. |
+| `src/admin.ts` | Dashboard sign-in and sessions, password reset links, admins, merchant settings, images, staff keys. |
+| `src/integration.ts` | Connected systems: their keys, members by their ID, purchases by order ID, rewards, reversals. |
+| `src/mail.ts` | The one email we send (a password reset link), through Resend. |
+| `src/badges.ts` | Apple's and Google's official wallet buttons, read from `assets/wallet-badges/`. |
 | `src/scheduler.ts` | The background run: refresh cards after a merchant change, send due messages. |
 | `src/notify.ts` | Delivery of updates and messages to both wallets. |
 | `src/db.ts` | SQLite schema and its migrations (Node's built-in `node:sqlite`). |
@@ -133,10 +162,14 @@ certificate, Apple's WWDR certificate, and an HTTPS host. For Android, follow
 | `src/routes/customer-copy.ts` | Every word on the customer's pages, in English and Arabic, and the privacy notice. |
 | `src/routes/staff.ts` | Staff scanner page and its API. |
 | `src/routes/admin.ts` | The dashboard page and its API; `admin.client.js` and `admin.css` are the page itself. |
-| `scripts/` | Merchant setup CLI, dev certificates. |
+| `src/routes/integration.ts` | The connected-systems API, `/api/v1`. |
+| `scripts/` | Merchant setup CLI (`merchant.ts`), Apple certificates (`apple.ts`), the setup check (`doctor.ts`), backups (`backup.ts`), dev certificates, and `mac.sh`. |
+| `deploy/` | Our own server: systemd units, nightly backup, Caddy, and the steps. |
 
 ## Documents
 
+- [`docs/BADER_MAC.md`](docs/BADER_MAC.md): **the Apple certificate, the Google key and the
+  real-phone test, from a Mac**, one command per step.
 - [`docs/MANUAL_STEPS.md`](docs/MANUAL_STEPS.md): **start here before going live.** Every step that
   needs a person (Apple and Google accounts, certificates, hosting, the real-phone test, papers),
   who does it, what it must produce, how to check it, and where each one stands.
@@ -148,5 +181,8 @@ certificate, Apple's WWDR certificate, and an HTTPS host. For Android, follow
   `docs/LOYALTY_WALLET_ADDON.md` (branch `develop`) at `58c04e0`.
 - [`docs/APPLE_SETUP.md`](docs/APPLE_SETUP.md) and [`docs/GOOGLE_SETUP.md`](docs/GOOGLE_SETUP.md):
   what has to happen on each platform's side before cards reach real phones.
+- [`docs/INTEGRATION.md`](docs/INTEGRATION.md): the API for connected systems, and UniDash's side
+  of it, call by call.
+- [`deploy/README.md`](deploy/README.md): setting up our own server.
 
 The originals stay where they are; this repo is where the product is built.
