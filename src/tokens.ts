@@ -10,7 +10,6 @@ export function newSerial(): string {
   return s
 }
 
-/** Apple's authenticationToken for the pass web service. Must be at least 16 characters. */
 /** A short code for a member's "bring a friend" link: 7 base32 characters, unique per merchant (the index retries a clash). */
 export function newInviteCode(): string {
   const bytes = randomBytes(7)
@@ -19,12 +18,23 @@ export function newInviteCode(): string {
   return s
 }
 
+/** Apple's authenticationToken for the pass web service. Must be at least 16 characters. */
 export function newAuthToken(): string {
   return randomBytes(24).toString('base64url')
 }
 
 export function newStaffKey(): string {
   return 'sk_' + randomBytes(24).toString('base64url')
+}
+
+/** A key for a connected system (UniDash, a till): "lk_" and 32 random bytes. */
+export function newApiKey(): string {
+  return 'lk_' + randomBytes(32).toString('base64url')
+}
+
+/** The token in a "reset your password" email link. */
+export function newResetToken(): string {
+  return 'rt_' + randomBytes(32).toString('base64url')
 }
 
 export function sha256(s: string): string {

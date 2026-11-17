@@ -14,6 +14,14 @@ export interface Config {
   nfcEncryptionPublicKey: string | null
   /** Google Wallet, once we have an issuer account (docs/GOOGLE_SETUP.md). Null: Apple only. */
   google: GoogleConfig | null
+  /** Email for "forgot my password" links. Null: we reset from the command line. */
+  mail: MailConfig | null
+}
+
+export interface MailConfig {
+  resendApiKey: string
+  /** "Loyalty <cards@example.com>", on a domain verified with Resend. */
+  from: string
 }
 
 export interface GoogleConfig {
@@ -67,7 +75,14 @@ export function loadConfig(): Config {
     apns: { host: process.env.APNS_HOST ?? 'https://api.push.apple.com' },
     nfcEncryptionPublicKey: process.env.NFC_ENCRYPTION_PUBLIC_KEY || null,
     google: googleConfig(),
+    mail: mailConfig(),
   }
+}
+
+function mailConfig(): MailConfig | null {
+  const resendApiKey = process.env.RESEND_API_KEY
+  if (!resendApiKey) return null
+  return { resendApiKey, from: need('MAIL_FROM') }
 }
 
 /** The service account key file Google hands out, inline (GOOGLE_SERVICE_ACCOUNT_JSON) or as a path. */

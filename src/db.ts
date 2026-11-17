@@ -339,6 +339,37 @@ const MIGRATIONS = [
   ALTER TABLE merchants ADD COLUMN contact_email TEXT;
   ALTER TABLE merchants ADD COLUMN contact_address TEXT;
   `,
+  // 11: other systems record purchases themselves (UniDash on a collected order, a till), and links
+  // that reset a forgotten dashboard password by email.
+  `
+  -- A key per connected system, like a staff key per counter. Shown once: only its hash is kept.
+  CREATE TABLE api_keys (
+    id           INTEGER PRIMARY KEY,
+    merchant_id  INTEGER NOT NULL REFERENCES merchants(id),
+    label        TEXT NOT NULL,
+    key_hash     TEXT NOT NULL UNIQUE,
+    created_at   INTEGER NOT NULL,
+    revoked_at   INTEGER,
+    last_used_at INTEGER
+  );
+  CREATE INDEX api_keys_merchant ON api_keys(merchant_id);
+  -- The other system's own ID for the member (a UniDash user ID). Cleared when the member is deleted.
+  ALTER TABLE cards ADD COLUMN external_id TEXT;
+  CREATE UNIQUE INDEX cards_external ON cards(merchant_id, external_id) WHERE external_id IS NOT NULL;
+  -- Which connected system recorded the entry, as staff_id says which counter did.
+  ALTER TABLE ledger ADD COLUMN api_key_id INTEGER REFERENCES api_keys(id);
+
+  -- A "forgot my password" link, valid for an hour and once. Only the token's hash is kept; the token
+  -- itself is only ever in the email.
+  CREATE TABLE admin_resets (
+    token_hash TEXT PRIMARY KEY,
+    admin_id   INTEGER NOT NULL REFERENCES admins(id),
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at    INTEGER
+  );
+  CREATE INDEX admin_resets_admin ON admin_resets(admin_id, created_at);
+  `,
 ]
 
 /** opts.version stops the migrations at that version: only tests use it, to check an upgrade keeps data. */

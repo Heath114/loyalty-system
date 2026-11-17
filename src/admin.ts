@@ -2,7 +2,7 @@ import { randomBytes, randomInt, scrypt, timingSafeEqual } from 'node:crypto'
 import { tx, type DB } from './db.ts'
 import { LoyaltyError, touchMerchant, type Merchant } from './loyalty.ts'
 import { isPng, parseColor } from './pass/png.ts'
-import { newStaffKey, sha256 } from './tokens.ts'
+import { newResetToken, newStaffKey, sha256 } from './tokens.ts'
 
 /**
  * The people who run a merchant's program from the dashboard, how they sign in, and the merchant
@@ -192,6 +192,57 @@ export function sessionAdmin(db: DB, token: string | undefined): Admin | undefin
   }
   const { session_seen: _, ...admin } = row
   return admin
+}
+
+/** How long a "forgot my password" link works, and how many one sign-in can be sent in an hour. */
+export const RESET_MINUTES = 60
+export const MAX_RESETS_PER_HOUR = 3
+
+/**
+ * "Forgot my password": a one-hour, single-use link for the email, if it has a live sign-in. Returns
+ * null otherwise, or when this email already had 3 links in the hour (so nobody can flood an inbox);
+ * the caller answers the same either way, so the form never tells who has a sign-in. A new link ends
+ * any older one.
+ */
+export function requestPasswordReset(db: DB, emailInput: unknown, now = Date.now()): { admin: Admin; token: string } | null {
+  const email = checkEmail(emailInput)
+  const a = db.prepare('SELECT * FROM admins WHERE email = ? AND disabled_at IS NULL').get(email) as Admin | undefined
+  if (!a) return null
+  const recent = db.prepare('SELECT COUNT(*) AS n FROM admin_resets WHERE admin_id = ? AND created_at > ?').get(a.id, now - 3_600_000) as { n: number }
+  if (Number(recent.n) >= MAX_RESETS_PER_HOUR) return null
+  const token = newResetToken()
+  tx(db, () => {
+    db.prepare('UPDATE admin_resets SET used_at = ? WHERE admin_id = ? AND used_at IS NULL').run(now, a.id)
+    db.prepare('INSERT INTO admin_resets (token_hash, admin_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(
+      sha256(token), a.id, now, now + RESET_MINUTES * 60_000,
+    )
+  })
+  return { admin: a, token }
+}
+
+/** The link from the email, with a new password: it is set, every session ends, and this browser is signed in. */
+export async function completePasswordReset(db: DB, tokenInput: unknown, password: unknown): Promise<Session> {
+  const p = checkPassword(password)
+  const hash = sha256(String(tokenInput ?? ''))
+  const expired = () => new LoyaltyError('This link has expired or was already used. Ask for a new one.', 400)
+  const find = () =>
+    db
+      .prepare(
+        `SELECT a.* FROM admin_resets r JOIN admins a ON a.id = r.admin_id
+         WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > ? AND a.disabled_at IS NULL`,
+      )
+      .get(hash, Date.now()) as Admin | undefined
+  if (!find()) throw expired()
+  const pwHash = await hashPassword(p)
+  return tx(db, () => {
+    const a = find()
+    if (!a) throw expired()
+    const now = Date.now()
+    db.prepare('UPDATE admin_resets SET used_at = ? WHERE token_hash = ?').run(now, hash)
+    db.prepare('UPDATE admins SET password_hash = ?, must_change = 0, password_changed_at = ? WHERE id = ?').run(pwHash, now, a.id)
+    db.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').run(a.id)
+    return newSession(db, { ...a, password_hash: pwHash, must_change: 0, password_changed_at: now }, now)
+  })
 }
 
 export function logout(db: DB, token: string): void {

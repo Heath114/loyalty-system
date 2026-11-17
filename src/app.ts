@@ -3,8 +3,10 @@ import type { Config } from './config.ts'
 import type { DB } from './db.ts'
 import type { Pusher } from './apns.ts'
 import type { GoogleWallet } from './google.ts'
+import type { Mailer } from './mail.ts'
 import { LoyaltyError } from './loyalty.ts'
 import { adminRoutes } from './routes/admin.ts'
+import { integrationRoutes } from './routes/integration.ts'
 import { publicRoutes } from './routes/public.ts'
 import { staffRoutes } from './routes/staff.ts'
 import { walletRoutes } from './routes/wallet.ts'
@@ -15,6 +17,8 @@ export interface Deps {
   push: Pusher
   /** Null until Google Wallet is set up (docs/GOOGLE_SETUP.md): the card is then Apple only. */
   google: GoogleWallet | null
+  /** Null until email is set up (RESEND_API_KEY): "forgot my password" then says to ask us. */
+  mail?: Mailer | null
 }
 
 export function createApp(deps: Deps) {
@@ -38,6 +42,7 @@ export function createApp(deps: Deps) {
   app.get('/favicon.ico', (c) => c.body(null, 204, { 'Cache-Control': 'public, max-age=86400' }))
   app.route('/wallet', walletRoutes(deps))
   app.route('/', adminRoutes(deps))
+  app.route('/', integrationRoutes(deps))
   app.route('/', staffRoutes(deps))
   app.route('/', publicRoutes(deps))
   return app

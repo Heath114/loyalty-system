@@ -41,6 +41,7 @@ export function testConfig(over: Partial<Config> = {}): Config {
     apns: { host: 'https://apns.invalid' },
     nfcEncryptionPublicKey: null,
     google: null,
+    mail: null,
     ...over,
   }
 }

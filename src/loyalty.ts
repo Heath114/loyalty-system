@@ -53,6 +53,8 @@ export interface Card {
   invite_code: string | null
   /** The card whose invite this member joined with. */
   referred_by: number | null
+  /** A connected system's own ID for the member (a UniDash user ID); null for members who joined at the counter. */
+  external_id: string | null
 }
 
 export class LoyaltyError extends Error {
@@ -119,6 +121,8 @@ export interface Enrolment {
   lang?: Lang
   /** The invite code from a friend's link, if they came that way. A wrong or stale one is ignored. */
   inviteCode?: string
+  /** A connected system's ID for the member (integration.ts). */
+  externalId?: string
 }
 
 const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
@@ -139,25 +143,32 @@ export function langFrom(acceptLanguage: string | undefined): Lang {
   return /^\s*ar\b/i.test(acceptLanguage ?? '') ? 'ar' : 'en'
 }
 
-export function enrol(db: DB, merchant: Merchant, e: Enrolment): Card {
-  const name = e.name.trim()
+/** A member's name, phone, email and birthday ("MM-DD"), checked and trimmed. Empty optional ones become null. */
+export function cleanDetails(e: { name: string; phone?: string | null; email?: string | null; birthday?: string | null }) {
+  const name = String(e.name ?? '').trim()
   if (!name || name.length > 80) throw new LoyaltyError('Please enter your name')
-  const phone = e.phone?.trim() || null
+  const phone = String(e.phone ?? '').trim() || null
   if (phone && !/^\+?[0-9 ]{7,20}$/.test(phone)) throw new LoyaltyError('Please check the phone number')
-  const email = e.email?.trim() || null
-  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new LoyaltyError('Please check the email address')
-  if (e.birthday && !/^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.test(e.birthday)) throw new LoyaltyError('Please check the birthday')
+  const email = String(e.email ?? '').trim() || null
+  if (email && (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 200)) throw new LoyaltyError('Please check the email address')
+  const birthday = String(e.birthday ?? '').trim() || null
+  if (birthday && !/^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.test(birthday)) throw new LoyaltyError('Please check the birthday')
+  return { name, phone, email, birthday }
+}
+
+export function enrol(db: DB, merchant: Merchant, e: Enrolment): Card {
+  const { name, phone, email, birthday } = cleanDetails(e)
   const now = Date.now()
   const serial = newSerial()
   return tx(db, () => {
     const referrer = e.inviteCode ? cardByInvite(db, merchant.id, e.inviteCode) : undefined
     const { lastInsertRowid } = db.prepare(
       `INSERT INTO cards (merchant_id, serial, auth_token, member_name, member_phone, member_email, birthday, marketing_consent, lang,
-         referred_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         referred_by, external_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
-      merchant.id, serial, newAuthToken(), name, phone, email, e.birthday || null, e.marketingConsent ? 1 : 0, e.lang ?? 'ar',
-      referrer?.id ?? null, now, now,
+      merchant.id, serial, newAuthToken(), name, phone, email, birthday, e.marketingConsent ? 1 : 0, e.lang ?? 'ar',
+      referrer?.id ?? null, e.externalId ?? null, now, now,
     )
     // The welcome gift is on the card from the first moment, so the first look at it already shows it.
     const welcome = merchantById(db, merchant.id).welcome_units
@@ -422,7 +433,9 @@ function replay(db: DB, prior: { card_id: number; units: number }, serial: strin
  */
 export function earn(
   db: DB, merchant: Merchant, serial: string,
-  opts: { amountFils?: number | null; categoryId?: number | null; staffId?: number | null; idempotencyKey?: string; now?: number },
+  opts: {
+    amountFils?: number | null; categoryId?: number | null; staffId?: number | null; apiKeyId?: number | null; idempotencyKey?: string; now?: number
+  },
 ): Movement {
   return tx(db, () => {
     const prior = existing(db, merchant.id, opts.idempotencyKey)
@@ -436,11 +449,11 @@ export function earn(
     const units = boost ? Math.floor(Math.round(base * boost.multiplier * 1000) / 1000) : base
     const now = Math.max(clock, card.updated_at + 1)
     db.prepare(
-      `INSERT INTO ledger (merchant_id, card_id, kind, units, amount_fils, category_id, boost_id, staff_id, idempotency_key, created_at)
-       VALUES (?, ?, 'earn', ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ledger (merchant_id, card_id, kind, units, amount_fils, category_id, boost_id, staff_id, api_key_id, idempotency_key, created_at)
+       VALUES (?, ?, 'earn', ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       merchant.id, card.id, units, opts.amountFils ?? null, category?.id ?? null, boost?.id ?? null, opts.staffId ?? null,
-      opts.idempotencyKey ?? null, now,
+      opts.apiKeyId ?? null, opts.idempotencyKey ?? null, now,
     )
     db.prepare('UPDATE cards SET balance = balance + ?, lifetime_earned = lifetime_earned + ?, updated_at = ? WHERE id = ?').run(
       units, units, now, card.id,
@@ -469,7 +482,7 @@ export function rewards(db: DB, merchantId: number, opts: { archived?: boolean }
     .all(merchantId) as unknown as Reward[]
 }
 
-function rewardById(db: DB, merchantId: number, id: number): Reward {
+export function rewardById(db: DB, merchantId: number, id: number): Reward {
   const r = db.prepare('SELECT * FROM rewards WHERE id = ? AND merchant_id = ?').get(id, merchantId) as Reward | undefined
   if (!r) throw new LoyaltyError('Reward not found', 404)
   return r
@@ -534,7 +547,7 @@ export function rewardMenu(db: DB, m: Merchant, card?: Card) {
 /** Redeems a reward: the merchant's headline one (reward_threshold), or one from the menu by id. */
 export function redeem(
   db: DB, merchant: Merchant, serial: string,
-  opts: { rewardId?: number | null; staffId?: number | null; idempotencyKey?: string },
+  opts: { rewardId?: number | null; staffId?: number | null; apiKeyId?: number | null; idempotencyKey?: string },
 ): Movement {
   return tx(db, () => {
     const prior = existing(db, merchant.id, opts.idempotencyKey)
@@ -552,9 +565,9 @@ export function redeem(
     const units = -cost
     const now = Math.max(Date.now(), card.updated_at + 1)
     db.prepare(
-      `INSERT INTO ledger (merchant_id, card_id, kind, units, reward_id, staff_id, idempotency_key, created_at)
-       VALUES (?, ?, 'redeem', ?, ?, ?, ?, ?)`,
-    ).run(merchant.id, card.id, units, rewardId, opts.staffId ?? null, opts.idempotencyKey ?? null, now)
+      `INSERT INTO ledger (merchant_id, card_id, kind, units, reward_id, staff_id, api_key_id, idempotency_key, created_at)
+       VALUES (?, ?, 'redeem', ?, ?, ?, ?, ?, ?)`,
+    ).run(merchant.id, card.id, units, rewardId, opts.staffId ?? null, opts.apiKeyId ?? null, opts.idempotencyKey ?? null, now)
     db.prepare('UPDATE cards SET balance = balance + ?, rewards_redeemed = rewards_redeemed + 1, updated_at = ? WHERE id = ?').run(
       units, now, card.id,
     )
@@ -570,10 +583,49 @@ export interface Undo extends Movement {
   undone: { kind: 'earn' | 'redeem'; units: number }
 }
 
+interface Entry {
+  id: number
+  card_id: number
+  kind: 'earn' | 'redeem'
+  units: number
+  staff_id: number | null
+  voided_at: number | null
+  created_at: number
+}
+
+/**
+ * Takes an earn or a redeem back: the row is marked and a 'void' row reverses it; nothing is deleted.
+ * Runs inside the caller's transaction.
+ */
+function takeBack(
+  db: DB, merchant: Merchant, card: Card, entry: Entry,
+  opts: { staffId?: number | null; apiKeyId?: number | null; idempotencyKey?: string; now: number },
+): Undo {
+  const units = -entry.units
+  if (card.balance + units < 0) throw new LoyaltyError('The card no longer has those points to take back', 409)
+  const now = Math.max(opts.now, card.updated_at + 1)
+  db.prepare('UPDATE ledger SET voided_at = ? WHERE id = ?').run(now, entry.id)
+  db.prepare(
+    `INSERT INTO ledger (merchant_id, card_id, kind, units, staff_id, api_key_id, idempotency_key, ref_id, created_at)
+     VALUES (?, ?, 'void', ?, ?, ?, ?, ?, ?)`,
+  ).run(merchant.id, card.id, units, opts.staffId ?? null, opts.apiKeyId ?? null, opts.idempotencyKey ?? null, entry.id, now)
+  db.prepare(
+    `UPDATE cards SET balance = balance + ?, lifetime_earned = lifetime_earned - ?, rewards_redeemed = rewards_redeemed - ?,
+       updated_at = ? WHERE id = ?`,
+  ).run(units, entry.kind === 'earn' ? entry.units : 0, entry.kind === 'redeem' ? 1 : 0, now, card.id)
+  return { card: merchantCard(db, merchant.id, card.serial), units, replayed: false, undone: { kind: entry.kind, units: entry.units } }
+}
+
+/** What an idempotency key's void row took back, for a replayed undo or reversal. */
+function replayUndo(db: DB, prior: { card_id: number; units: number }, serial: string): Undo {
+  const r = replay(db, prior, serial)
+  return { ...r, undone: { kind: -prior.units > 0 ? 'earn' : 'redeem', units: -prior.units } as Undo['undone'] }
+}
+
 /**
  * Takes back the card's latest stamp, points or reward, if that staff key recorded it in the last
- * 10 minutes: the "I tapped the wrong customer" button. The row is marked and a 'void' row reverses
- * it; nothing is deleted. Anything older, or recorded by someone else, is the merchant's to adjust.
+ * 10 minutes: the "I tapped the wrong customer" button. Anything older, or recorded by someone else,
+ * is the merchant's to adjust.
  */
 export function undoLast(
   db: DB, merchant: Merchant, serial: string,
@@ -581,31 +633,38 @@ export function undoLast(
 ): Undo {
   return tx(db, () => {
     const prior = existing(db, merchant.id, opts.idempotencyKey)
-    if (prior) {
-      const r = replay(db, prior, serial)
-      return { ...r, undone: { kind: -prior.units > 0 ? 'earn' : 'redeem', units: -prior.units } as Undo['undone'] }
-    }
+    if (prior) return replayUndo(db, prior, serial)
     const card = merchantCard(db, merchant.id, serial)
     const last = db
       .prepare("SELECT * FROM ledger WHERE card_id = ? AND kind IN ('earn', 'redeem') AND voided_at IS NULL ORDER BY id DESC LIMIT 1")
-      .get(card.id) as { id: number; kind: 'earn' | 'redeem'; units: number; staff_id: number | null; created_at: number } | undefined
+      .get(card.id) as Entry | undefined
     const clock = opts.now ?? Date.now()
     if (!last || last.staff_id !== opts.staffId || last.created_at < clock - UNDO_WINDOW_MS) {
       throw new LoyaltyError('Nothing to undo: only your own last entry on this card, within 10 minutes', 409)
     }
-    const units = -last.units
-    if (card.balance + units < 0) throw new LoyaltyError('The card no longer has those points to take back', 409)
-    const now = Math.max(clock, card.updated_at + 1)
-    db.prepare('UPDATE ledger SET voided_at = ? WHERE id = ?').run(now, last.id)
-    db.prepare(
-      `INSERT INTO ledger (merchant_id, card_id, kind, units, staff_id, idempotency_key, ref_id, created_at)
-       VALUES (?, ?, 'void', ?, ?, ?, ?, ?)`,
-    ).run(merchant.id, card.id, units, opts.staffId, opts.idempotencyKey ?? null, last.id, now)
-    db.prepare(
-      `UPDATE cards SET balance = balance + ?, lifetime_earned = lifetime_earned - ?, rewards_redeemed = rewards_redeemed - ?,
-         updated_at = ? WHERE id = ?`,
-    ).run(units, last.kind === 'earn' ? last.units : 0, last.kind === 'redeem' ? 1 : 0, now, card.id)
-    return { card: merchantCard(db, merchant.id, serial), units, replayed: false, undone: { kind: last.kind, units: last.units } }
+    return takeBack(db, merchant, card, last, { staffId: opts.staffId, idempotencyKey: opts.idempotencyKey, now: clock })
+  })
+}
+
+/**
+ * A connected system takes back an entry it recorded, by the key it recorded it with: an order
+ * refunded after it earned, a reward voucher that was never issued. No time limit, unlike the counter's
+ * undo, because the other system is the record of what happened. reverseKey makes a repeat harmless.
+ */
+export function reverseEntry(
+  db: DB, merchant: Merchant, serial: string,
+  opts: { key: string; reverseKey: string; apiKeyId?: number | null; now?: number },
+): Undo {
+  return tx(db, () => {
+    const prior = existing(db, merchant.id, opts.reverseKey)
+    if (prior) return replayUndo(db, prior, serial)
+    const card = merchantCard(db, merchant.id, serial)
+    const entry = db
+      .prepare("SELECT * FROM ledger WHERE merchant_id = ? AND idempotency_key = ? AND kind IN ('earn', 'redeem')")
+      .get(merchant.id, opts.key) as Entry | undefined
+    if (!entry || entry.card_id !== card.id) throw new LoyaltyError('Nothing recorded with that ID for this member', 404)
+    if (entry.voided_at != null) throw new LoyaltyError('That entry was already taken back', 409)
+    return takeBack(db, merchant, card, entry, { apiKeyId: opts.apiKeyId, idempotencyKey: opts.reverseKey, now: opts.now ?? Date.now() })
   })
 }
 
@@ -649,7 +708,7 @@ export function deleteMember(db: DB, merchant: Merchant, serial: string): Card {
     const now = Math.max(Date.now(), card.updated_at + 1)
     db.prepare(
       `UPDATE cards SET member_name = ?, member_phone = NULL, member_email = NULL, birthday = NULL, marketing_consent = 0,
-         deleted_at = ?, updated_at = ? WHERE id = ?`,
+         external_id = NULL, deleted_at = ?, updated_at = ? WHERE id = ?`,
     ).run(DELETED_NAME, now, now, card.id)
     // The text of messages sent to them was personalised with their name.
     db.prepare("UPDATE messages SET text = '' WHERE card_id = ?").run(card.id)
