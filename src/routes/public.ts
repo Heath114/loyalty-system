@@ -6,6 +6,7 @@ import {
   cardByInvite, cardBySerial, categories, deleteMember, enrol, history, langFrom, LoyaltyError, merchantById, merchantBySlug, parseBirthday,
   rewardMenu, rewardsAvailable, runningBoosts, type Card, type HistoryRow, type Lang, type Merchant,
 } from '../loyalty.ts'
+import { loadBadges } from '../badges.ts'
 import { cardDeleted, syncGoogleClass } from '../notify.ts'
 import { buildPass, formatSerial, latestMessage, merchantImage } from '../pass/build.ts'
 import { solidPng } from '../pass/png.ts'
@@ -50,6 +51,25 @@ function dateText(lang: Lang, m: Merchant, at: number, withTime = false): string
 export function publicRoutes(deps: Deps) {
   const { db, config, google } = deps
   const app = new Hono()
+  const badges = deps.badges ?? loadBadges()
+
+  /** Apple's or Google's official button when its file is there, our text button otherwise. */
+  function walletButton(brand: 'apple' | 'google', lang: Lang, href: string) {
+    const label = w(lang, brand === 'apple' ? 'addApple' : 'addGoogle')
+    return badges.has(`${brand}-${lang}.svg`)
+      ? html`<a class="walletbadge" href="${href}"><img src="/badges/${brand}-${lang}.svg" alt="${label}"></a>`
+      : html`<a class="btn" href="${href}">${label}</a>`
+  }
+
+  // Served from here so the card page needs nothing from Apple's or Google's sites. No script in an SVG
+  // opened on its own may run.
+  app.get('/badges/:file', (c) => {
+    const svg = badges.get(c.req.param('file'))
+    if (!svg) return c.body(null, 404)
+    return c.body(svg, 200, {
+      'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+    })
+  })
 
   function merchantOr404(slug: string): Merchant {
     const m = merchantBySlug(db, slug)
@@ -255,8 +275,8 @@ body{margin:0;background:#fff;color:#111;font:16px/1.4 -apple-system,system-ui,T
       return cat ? w(lang, 'boostCategory', { ...vars, c: pick(lang, cat.name, cat.name_ar) }) : w(lang, 'boostNow', vars)
     })
     const lines = history(db, card, 15).map((h) => historyLine(lang, m, h)).filter((x) => x !== null)
-    const appleButton = html`<a class="btn" href="/c/${serial}/card.pkpass?t=${t}">${w(lang, 'addApple')}</a>`
-    const googleButton = google ? html`<a class="btn" href="/c/${serial}/google?t=${t}">${w(lang, 'addGoogle')}</a>` : ''
+    const appleButton = walletButton('apple', lang, `/c/${serial}/card.pkpass?t=${t}`)
+    const googleButton = google ? walletButton('google', lang, `/c/${serial}/google?t=${t}`) : ''
     const android = /Android/i.test(c.req.header('User-Agent') ?? '')
     const link = m.referral_units > 0 ? inviteLink(config.publicUrl, m, db, card) : null
     return c.html(

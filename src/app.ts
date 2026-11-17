@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Config } from './config.ts'
 import type { DB } from './db.ts'
 import type { Pusher } from './apns.ts'
+import type { Badges } from './badges.ts'
 import type { GoogleWallet } from './google.ts'
 import type { Mailer } from './mail.ts'
 import { LoyaltyError } from './loyalty.ts'
@@ -19,6 +20,8 @@ export interface Deps {
   google: GoogleWallet | null
   /** Null until email is set up (RESEND_API_KEY): "forgot my password" then says to ask us. */
   mail?: Mailer | null
+  /** The official wallet buttons (src/badges.ts). Tests pass their own; otherwise read from assets/wallet-badges. */
+  badges?: Badges
 }
 
 export function createApp(deps: Deps) {

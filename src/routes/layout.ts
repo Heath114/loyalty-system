@@ -31,6 +31,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td{padding:8px 0;border
 .list{list-style:none;padding:0;margin:8px 0}.list li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
 .foot{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin-top:24px;font-size:14px}.foot a{color:var(--muted)}
 .btn.danger{background:#b3261e;color:#fff}
+.walletbadge{display:block;text-align:center;margin-top:16px}.walletbadge img{height:48px;width:auto;max-width:100%}
 .banner{background:#fff1c2;color:#5a4300;border-radius:12px;padding:11px 14px;margin:12px 0;font-weight:600}
 @media (prefers-color-scheme:dark){.banner{background:#3a2f0b;color:#f3d77a}}
 `
